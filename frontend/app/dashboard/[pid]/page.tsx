@@ -4,6 +4,7 @@ import { Download, LoaderCircle, OctagonAlert, Play } from "lucide-react";
 import { ProjectImageList } from "@/components/project-page/project-image-list";
 import { ViewToggle } from "@/components/project-page/view-toggle";
 import { AddImagesDialog } from "@/components/project-page/add-images-dialog";
+import ShareDialog from "@/components/share-dialog";
 import { Button } from "@/components/ui/button";
 import { Toolbar } from "@/components/toolbar/toolbar";
 import {
@@ -205,6 +206,7 @@ export default function Project({
                     <Play /> Apply
                   </Button>
                   <AddImagesDialog />
+                  <ShareDialog />
                 </>
               )}
               <Button

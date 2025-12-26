@@ -14,6 +14,7 @@ import {
   updateProject,
   updateProjectTool,
   previewProjectImage,
+  createShare,
 } from "../projects";
 import { createBlobUrlFromFile, downloadBlob } from "../utils";
 
@@ -229,6 +230,18 @@ export const useClearProjectTools = (
         refetchType: "all",
         queryKey: ["projectResults", uid, pid, token],
       });
+    },
+  });
+};
+
+export const useCreateShare = (uid: string, pid: string, token: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ permission, expiresInDays, created_by }: { permission: "view" | "edit"; expiresInDays?: number; created_by?: string }) =>
+      createShare({ uid, pid, token, permission, expiresInDays, created_by }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", uid, pid, token] });
+      qc.invalidateQueries({ queryKey: ["projects", uid, token] });
     },
   });
 };

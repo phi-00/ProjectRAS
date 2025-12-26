@@ -539,3 +539,50 @@ export const processProject = async ({
   if (response.status !== 201 || !response.data)
     throw new Error("Failed to request project processing");
 };
+
+// Share management
+export const createShare = async ({
+  uid,
+  pid,
+  token,
+  permission,
+  expiresInDays,
+  created_by,
+}: {
+  uid: string;
+  pid: string;
+  token: string;
+  permission: "view" | "edit";
+  expiresInDays?: number;
+  created_by?: string;
+}) => {
+  const response = await api.post<{ token: string }>(
+    `/projects/${uid}/${pid}/share`,
+    { permission, expiresInDays, created_by },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (response.status !== 201 || !response.data) throw new Error("Failed to create share");
+  return response.data.token;
+};
+
+export const listShares = async ({ uid, pid, token }: { uid: string; pid: string; token: string }) => {
+  const response = await api.get<any>(`/projects/${uid}/${pid}/shares`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (response.status !== 200 || !response.data) throw new Error("Failed to list shares");
+  return response.data;
+};
+
+export const deleteShare = async ({ uid, pid, token, shareToken }: { uid: string; pid: string; token: string; shareToken: string }) => {
+  const response = await api.delete(`/projects/${uid}/${pid}/share/${shareToken}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (response.status !== 204) throw new Error("Failed to delete share");
+};

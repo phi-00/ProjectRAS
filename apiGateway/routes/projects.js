@@ -73,7 +73,11 @@ Post answer structure in case of success
  */
 router.get("/:user", auth.checkToken, function (req, res, next) {
   axios
-    .get(projectsURL + `${req.params.user}`, { httpsAgent: httpsAgent })
+    .get(projectsURL + `${req.params.user}`, {
+      httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+    })
     .then((resp) => res.status(200).jsonp(resp.data))
     .catch((err) => res.status(500).jsonp("Error getting users"));
 });
@@ -87,6 +91,8 @@ router.get("/:user/:project", auth.checkToken, function (req, res, next) {
   axios
     .get(projectsURL + `${req.params.user}/${req.params.project}`, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
     })
     .then((resp) => res.status(200).jsonp(resp.data))
     .catch((err) => res.status(500).jsonp("Error getting project"));
@@ -107,6 +113,8 @@ router.get(
           `${req.params.user}/${req.params.project}/img/${req.params.img}`,
         {
           httpsAgent: httpsAgent,
+          params: req.query,
+          headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
         }
       )
       .then((resp) => {
@@ -125,6 +133,8 @@ router.get("/:user/:project/imgs", auth.checkToken, function (req, res, next) {
   axios
     .get(projectsURL + `${req.params.user}/${req.params.project}/imgs`, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
     })
     .then((resp) => {
       res.status(200).send(resp.data);
@@ -145,6 +155,8 @@ router.get(
       .get(projectsURL + `${req.params.user}/${req.params.project}/process`, {
         httpsAgent: httpsAgent,
         responseType: "arraybuffer",
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
       })
       .then((resp) => res.status(200).send(resp.data))
       .catch((err) =>
@@ -167,6 +179,8 @@ router.get(
         projectsURL + `${req.params.user}/${req.params.project}/process/url`,
         {
           httpsAgent: httpsAgent,
+          params: req.query,
+          headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
         }
       )
       .then((resp) => {
@@ -187,6 +201,8 @@ router.post("/:user", auth.checkToken, function (req, res, next) {
   axios
     .post(projectsURL + `${req.params.user}`, req.body, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"] },
     })
     .then((resp) => res.status(201).jsonp(resp.data))
     .catch((err) => res.status(500).jsonp("Error creating new project"));
@@ -206,7 +222,7 @@ router.post(
         projectsURL +
           `${req.params.user}/${req.params.project}/preview/${req.params.img}`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user } }
       )
       .then((resp) => res.status(201).jsonp(resp.data))
       .catch((err) => {
@@ -240,8 +256,11 @@ router.post(
         {
           headers: {
             "Content-Type": "multipart/form-data",
+            "x-share-token": req.headers["x-share-token"],
+            "x-auth-user": req.params.user,
           },
           httpsAgent: httpsAgent,
+          params: req.query,
         }
       )
       .then((resp) => res.sendStatus(201))
@@ -259,11 +278,53 @@ router.post("/:user/:project/tool", auth.checkToken, function (req, res, next) {
     .post(
       projectsURL + `${req.params.user}/${req.params.project}/tool`,
       req.body,
-      { httpsAgent: httpsAgent }
+      { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user } }
     )
     .then((resp) => res.status(201).jsonp(resp.data))
     .catch((err) => res.status(500).jsonp("Error adding tool to project"));
 });
+
+  /**
+   * Create share link (only project owner via auth.checkToken)
+   */
+  router.post("/:user/:project/share", auth.checkToken, function (req, res, next) {
+    axios
+      .post(projectsURL + `${req.params.user}/${req.params.project}/share`, req.body, {
+        httpsAgent: httpsAgent,
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+      })
+      .then((resp) => res.status(201).jsonp(resp.data))
+      .catch((err) => res.status(500).jsonp("Error creating share"));
+  });
+
+  /**
+   * List share links (only project owner)
+   */
+  router.get("/:user/:project/shares", auth.checkToken, function (req, res, next) {
+    axios
+      .get(projectsURL + `${req.params.user}/${req.params.project}/shares`, {
+        httpsAgent: httpsAgent,
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+      })
+      .then((resp) => res.status(200).jsonp(resp.data))
+      .catch((err) => res.status(500).jsonp("Error listing shares"));
+  });
+
+  /**
+   * Delete share link (only project owner)
+   */
+  router.delete("/:user/:project/share/:token", auth.checkToken, function (req, res, next) {
+    axios
+      .delete(projectsURL + `${req.params.user}/${req.params.project}/share/${req.params.token}`, {
+        httpsAgent: httpsAgent,
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+      })
+      .then((resp) => res.sendStatus(resp.status))
+      .catch((err) => res.status(500).jsonp("Error deleting share"));
+  });
 
 /**
  * Reorder tools of a project
@@ -278,7 +339,7 @@ router.post(
       .post(
         projectsURL + `${req.params.user}/${req.params.project}/reorder`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((resp) => res.status(201).jsonp(resp.data))
       .catch((err) => res.status(500).jsonp("Error reordering tools"));
@@ -298,7 +359,7 @@ router.post(
       .post(
         projectsURL + `${req.params.user}/${req.params.project}/process`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((resp) => res.status(201).jsonp(resp.data))
       .catch((err) =>
@@ -316,6 +377,8 @@ router.put("/:user/:project", auth.checkToken, function (req, res, next) {
   axios
     .put(projectsURL + `${req.params.user}/${req.params.project}`, req.body, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"] },
     })
     .then((_) => res.sendStatus(204))
     .catch((err) => res.status(500).jsonp("Error updating project details"));
@@ -335,7 +398,7 @@ router.put(
         projectsURL +
           `${req.params.user}/${req.params.project}/tool/${req.params.tool}`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((_) => res.sendStatus(204))
       .catch((err) => res.status(500).jsonp("Error updating tool params"));
@@ -351,6 +414,8 @@ router.delete("/:user/:project", auth.checkToken, function (req, res, next) {
   axios
     .delete(projectsURL + `${req.params.user}/${req.params.project}`, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"] },
     })
     .then((_) => res.sendStatus(204))
     .catch((err) => res.status(500).jsonp("Error deleting project"));
@@ -369,7 +434,7 @@ router.delete(
       .delete(
         projectsURL +
           `${req.params.user}/${req.params.project}/img/${req.params.img}`,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((_) => res.sendStatus(204))
       .catch((err) =>
@@ -391,7 +456,7 @@ router.delete(
       .delete(
         projectsURL +
           `${req.params.user}/${req.params.project}/tool/${req.params.tool}`,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((_) => res.sendStatus(204))
       .catch((err) =>
