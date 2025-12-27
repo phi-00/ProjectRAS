@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, LoaderCircle, OctagonAlert, Play } from "lucide-react";
+import { Download, LoaderCircle, OctagonAlert, Play, X } from "lucide-react";
 import { ProjectImageList } from "@/components/project-page/project-image-list";
 import { ViewToggle } from "@/components/project-page/view-toggle";
 import { AddImagesDialog } from "@/components/project-page/add-images-dialog";
@@ -20,6 +20,7 @@ import {
   useDownloadProject,
   useDownloadProjectResults,
   useProcessProject,
+  useCancelProcessProject,
 } from "@/lib/mutations/projects";
 import { useToast } from "@/hooks/use-toast";
 import { ProjectImage } from "@/lib/projects";
@@ -31,6 +32,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ModeToggle } from "@/components/project-page/mode-toggle";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useCancelProcess } from "@/hooks/use-cancel-process";
 
 export default function Project({
   params,
@@ -43,6 +45,7 @@ export default function Project({
   const project = useGetProject(session.user._id, pid, session.token);
   const downloadProjectImages = useDownloadProject();
   const processProject = useProcessProject();
+  const cancelProcessProject = useCancelProcessProject();
   const downloadProjectResults = useDownloadProjectResults();
   const { toast } = useToast();
   const socket = useGetSocket(session.token);
@@ -58,6 +61,8 @@ export default function Project({
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [processingSteps, setProcessingSteps] = useState<number>(1);
   const [waitingForPreview, setWaitingForPreview] = useState<string>("");
+  const { startProcess, cancelProcess, endProcess, showCancelButton, isCancelling } = useCancelProcess();
+  const [originalProject, setOriginalProject] = useState<any>(null);
 
   const totalProcessingSteps =
     (project.data?.tools.length ?? 0) * (project.data?.imgs.length ?? 0);
@@ -91,6 +96,7 @@ export default function Project({
         setTimeout(() => {
           projectResults.refetch().then(() => {
             setProcessing(false);
+            endProcess();
             if (!isMobile) sidebar.setOpen(true);
             setProcessingProgress(0);
             setProcessingSteps(1);
@@ -124,6 +130,7 @@ export default function Project({
     sidebar,
     isMobile,
     projectResults,
+    endProcess,
   ]);
 
   if (project.isError)
@@ -175,35 +182,78 @@ export default function Project({
             <div className="flex items-center gap-2 flex-wrap justify-end xl:justify-normal w-full xl:w-auto">
               {mode !== "results" && (
                 <>
-                  <Button
-                    disabled={
-                      project.data.tools.length <= 0 || waitingForPreview !== ""
-                    }
-                    className="inline-flex"
-                    onClick={() => {
-                      processProject.mutate(
-                        {
-                          uid: session.user._id,
-                          pid: project.data._id,
-                          token: session.token,
-                        },
-                        {
-                          onSuccess: () => {
-                            setProcessing(true);
-                            sidebar.setOpen(false);
+                  {!processing ? (
+                    <Button
+                      disabled={
+                        project.data.tools.length <= 0 || waitingForPreview !== ""
+                      }
+                      className="inline-flex"
+                      onClick={() => {
+                        // Store original project state for restoration
+                        setOriginalProject(JSON.parse(JSON.stringify(project.data)));
+                        startProcess(pid, project.data);
+
+                        processProject.mutate(
+                          {
+                            uid: session.user._id,
+                            pid: project.data._id,
+                            token: session.token,
                           },
-                          onError: (error) =>
-                            toast({
-                              title: "Ups! An error occurred.",
-                              description: error.message,
-                              variant: "destructive",
-                            }),
-                        },
-                      );
-                    }}
-                  >
-                    <Play /> Apply
-                  </Button>
+                          {
+                            onSuccess: () => {
+                              setProcessing(true);
+                              sidebar.setOpen(false);
+                            },
+                            onError: (error) =>
+                              toast({
+                                title: "Ups! An error occurred.",
+                                description: error.message,
+                                variant: "destructive",
+                              }),
+                          },
+                        );
+                      }}
+                    >
+                      <Play /> Apply
+                    </Button>
+                  ) : showCancelButton && !isCancelling ? (
+                    <Button
+                      variant="destructive"
+                      className="inline-flex"
+                      onClick={() => {
+                        cancelProcess(async () => {
+                          cancelProcessProject.mutate(
+                            {
+                              uid: session.user._id,
+                              pid: project.data._id,
+                              token: session.token,
+                            },
+                            {
+                              onSuccess: () => {
+                                setProcessing(false);
+                                setProcessingProgress(0);
+                                setProcessingSteps(1);
+                                sidebar.setOpen(true);
+                                toast({
+                                  title: "Processing cancelled",
+                                  description: "Project processing has been cancelled.",
+                                });
+                                projectResults.refetch();
+                              },
+                              onError: (error) =>
+                                toast({
+                                  title: "Error cancelling processing",
+                                  description: error.message,
+                                  variant: "destructive",
+                                }),
+                            },
+                          );
+                        });
+                      }}
+                    >
+                      <X /> Cancel
+                    </Button>
+                  ) : null}
                   <AddImagesDialog />
                 </>
               )}

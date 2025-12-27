@@ -539,3 +539,28 @@ export const processProject = async ({
   if (response.status !== 201 || !response.data)
     throw new Error("Failed to request project processing");
 };
+
+export const cancelProcessProject = async ({
+  uid,
+  pid,
+  token,
+}: {
+  uid: string;
+  pid: string;
+  token: string;
+}) => {
+  const response = await api.post<string>(
+    `/projects/${uid}/${pid}/process/cancel`,
+    {},
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (response.status !== 200)
+    throw new Error("Failed to cancel project processing");
+
+  return response.data;
+};
