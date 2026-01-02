@@ -11,6 +11,13 @@ const FormData = require("form-data");
 
 const auth = require("../auth/auth");
 
+// Normalize axios errors so we don't mask upstream status codes
+function relayError(res, err, fallbackMsg) {
+  const status = err?.response?.status || 500;
+  const payload = err?.response?.data || fallbackMsg;
+  res.status(status).jsonp(payload);
+}
+
 // Allow share-token access to bypass JWT check; otherwise enforce auth
 function optionalAuth(req, res, next) {
   if (req.query.share || req.headers["x-share-token"]) return next();
@@ -101,7 +108,7 @@ router.get("/:user/:project", optionalAuth, function (req, res, next) {
       headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
     })
     .then((resp) => res.status(200).jsonp(resp.data))
-    .catch((err) => res.status(500).jsonp("Error getting project"));
+    .catch((err) => relayError(res, err, "Error getting project"));
 });
 
 /**

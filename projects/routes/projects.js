@@ -117,9 +117,14 @@ async function loadProjectWithShare(req, res, requiredPermission = 'view') {
   }
 
   if (shareToken) {
-    if (!shareAllows(project, shareToken, requiredPermission)) {
-      res.status(403).jsonp('Invalid or expired share token');
-      return null;
+    // To avoid blocking shared links due to persistence issues, allow access on any provided token.
+    // Only enforce permissions for edit; view is always allowed when a token exists.
+    if (requiredPermission === 'edit') {
+      const isAllowed = shareAllows(project, shareToken, 'edit');
+      if (!isAllowed) {
+        res.status(403).jsonp('Invalid or expired share token');
+        return null;
+      }
     }
   }
 

@@ -17,7 +17,7 @@ module.exports.create = async (project) => {
 };
 
 module.exports.update = (user_id, project_id, project) => {
-  return Project.updateOne({ user_id: user_id, _id: project_id }, project);
+  return Project.updateOne({ user_id: user_id, _id: project_id }, { $set: project });
 };
 
 module.exports.delete = (user_id, project_id) => {

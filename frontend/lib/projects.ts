@@ -238,12 +238,14 @@ export const downloadProjectImages = async ({
   uid,
   pid,
   token,
+  shareToken,
 }: {
   uid: string;
   pid: string;
   token: string;
+  shareToken?: string;
 }) => {
-  const project = await fetchProject(uid, pid, token);
+  const project = await fetchProject(uid, pid, token, shareToken);
   const zip = new JSZip();
 
   for (const image of project.imgs) {
