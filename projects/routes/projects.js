@@ -99,6 +99,33 @@ function advanced_tool_num(project) {
   return ans;
 }
 
+// Resolve a project either by (user_id, project_id) or, when a share token is provided,
+// by project_id alone. Also validates the share token for the required permission.
+async function loadProjectWithShare(req, res, requiredPermission = 'view') {
+  const shareToken = req.query.share || req.headers['x-share-token'];
+
+  let project = await Project.getOne(req.params.user, req.params.project);
+
+  // If not found for this user but a share token exists, try by project id only
+  if (!project && shareToken) {
+    project = await Project.getById(req.params.project);
+  }
+
+  if (!project) {
+    res.status(404).jsonp("Project not found");
+    return null;
+  }
+
+  if (shareToken) {
+    if (!shareAllows(project, shareToken, requiredPermission)) {
+      res.status(403).jsonp('Invalid or expired share token');
+      return null;
+    }
+  }
+
+  return project;
+}
+
 // TODO process message according to type of output
 function process_msg() {
   read_msg(async (msg) => {
@@ -321,49 +348,47 @@ router.get("/:user", (req, res, next) => {
     .catch((_) => res.status(500).jsonp("Error acquiring user's projects"));
 });
 
-// Get a specific user's project
-router.get("/:user/:project", (req, res, next) => {
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (project) => {
-        // If a share token is provided, validate it grants view
-        const shareToken = req.query.share || req.headers['x-share-token'];
-        if (shareToken) {
-          if (!shareAllows(project, shareToken, 'view')) {
-            res.status(403).jsonp('Invalid or expired share token');
-            return;
-          }
-        }
-      const response = {
-        _id: project._id,
-        name: project.name,
-        tools: project.tools,
-        imgs: [],
-      };
+// Get a specific user's project (supports share token)
+router.get("/:user/:project", async (req, res, next) => {
+  try {
+    const project = await loadProjectWithShare(req, res, 'view');
+    if (!project) return;
 
-      for (let img of project.imgs) {
-        try {
-          const resp = await get_image_host(
-            req.params.user,
-            req.params.project,
-            "src",
-            img.og_img_key
-          );
-          const url = resp.data.url;
+    const ownerId = project.user_id;
+    const projectId = project._id;
 
-          response["imgs"].push({
-            _id: img._id,
-            name: path.basename(img.og_uri),
-            url: url,
-          });
-        } catch (_) {
-          res.status(404).jsonp(`Error acquiring image's url`);
-          return;
-        }
+    const response = {
+      _id: project._id,
+      name: project.name,
+      tools: project.tools,
+      imgs: [],
+    };
+
+    for (let img of project.imgs) {
+      try {
+        const resp = await get_image_host(
+          ownerId,
+          projectId,
+          "src",
+          img.og_img_key
+        );
+        const url = resp.data.url;
+
+        response["imgs"].push({
+          _id: img._id,
+          name: path.basename(img.og_uri),
+          url: url,
+        });
+      } catch (_) {
+        res.status(404).jsonp(`Error acquiring image's url`);
+        return;
       }
+    }
 
-      res.status(200).jsonp(response);
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+    res.status(200).jsonp(response);
+  } catch (_) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
   // Create a share link for a project (permission: 'view' or 'edit')
@@ -383,6 +408,7 @@ router.get("/:user/:project", (req, res, next) => {
 
     Project.getOne(req.params.user, req.params.project)
       .then(async (project) => {
+        if (!project.shares) project.shares = [];
         const token = uuidv4();
         const share = {
           token: token,
@@ -426,7 +452,8 @@ router.get("/:user/:project", (req, res, next) => {
     }
     Project.getOne(req.params.user, req.params.project)
       .then((project) => {
-        res.status(200).jsonp(project.shares || []);
+        const shares = project && Array.isArray(project.shares) ? project.shares : [];
+        res.status(200).jsonp(shares);
       })
       .catch((_) => res.status(501).jsonp('Error acquiring user project'));
   });
@@ -440,8 +467,9 @@ router.get("/:user/:project", (req, res, next) => {
     }
     Project.getOne(req.params.user, req.params.project)
       .then((project) => {
-        const removed = project.shares.filter((s) => s.token === req.params.token)[0];
-        project.shares = project.shares.filter((s) => s.token !== req.params.token);
+        const shares = project && Array.isArray(project.shares) ? project.shares : [];
+        const removed = shares.filter((s) => s.token === req.params.token)[0];
+        project.shares = shares.filter((s) => s.token !== req.params.token);
         Project.update(req.params.user, req.params.project, project)
           .then((_) => {
             try {
@@ -464,153 +492,166 @@ router.get("/:user/:project", (req, res, next) => {
   });
 // Get a specific project's image
 router.get("/:user/:project/img/:img", async (req, res, next) => {
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (project) => {
-      try {
-        const img = project.imgs.filter((i) => i._id == req.params.img)[0];
-        const resp = await get_image_host(
-          req.params.user,
-          req.params.project,
-          "src",
-          img.og_img_key
-        );
-        res.status(200).jsonp({
-          _id: img._id,
-          name: path.basename(img.og_uri),
-          url: resp.data.url,
-        });
-      } catch (_) {
-        res.status(404).jsonp("No image with such id.");
-      }
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+  try {
+    const project = await loadProjectWithShare(req, res, 'view');
+    if (!project) return;
+
+    const ownerId = project.user_id;
+    const projectId = project._id;
+
+    try {
+      const img = project.imgs.filter((i) => i._id == req.params.img)[0];
+      const resp = await get_image_host(
+        ownerId,
+        projectId,
+        "src",
+        img.og_img_key
+      );
+      res.status(200).jsonp({
+        _id: img._id,
+        name: path.basename(img.og_uri),
+        url: resp.data.url,
+      });
+    } catch (_) {
+      res.status(404).jsonp("No image with such id.");
+    }
+  } catch (_) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 // Get project images
 router.get("/:user/:project/imgs", async (req, res, next) => {
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (project) => {
-      try {
-        const ans = [];
+  try {
+    const project = await loadProjectWithShare(req, res, 'view');
+    if (!project) return;
 
-        for (let img of project.imgs) {
-          try {
-            const resp = await get_image_host(
-              req.params.user,
-              req.params.project,
-              "src",
-              img.og_img_key
-            );
-            const url = resp.data.url;
+    const ownerId = project.user_id;
+    const projectId = project._id;
 
-            ans.push({
-              _id: img._id,
-              name: path.basename(img.og_uri),
-              url: url,
-            });
-          } catch (_) {
-            res.status(404).jsonp(`Error acquiring image's url`);
-            return;
-          }
+    try {
+      const ans = [];
+
+      for (let img of project.imgs) {
+        try {
+          const resp = await get_image_host(
+            ownerId,
+            projectId,
+            "src",
+            img.og_img_key
+          );
+          const url = resp.data.url;
+
+          ans.push({
+            _id: img._id,
+            name: path.basename(img.og_uri),
+            url: url,
+          });
+        } catch (_) {
+          res.status(404).jsonp(`Error acquiring image's url`);
+          return;
         }
-        res.status(200).jsonp(ans);
-      } catch (_) {
-        res.status(404).jsonp("No image with such id.");
       }
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+      res.status(200).jsonp(ans);
+    } catch (_) {
+      res.status(404).jsonp("No image with such id.");
+    }
+  } catch (_) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 // Get results of processing a project
-router.get("/:user/:project/process", (req, res, next) => {
-  // Getting last processed request from project in order to get their result's path
+router.get("/:user/:project/process", async (req, res, next) => {
+  try {
+    const project = await loadProjectWithShare(req, res, 'view');
+    if (!project) return;
 
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (_) => {
-      const zip = new JSZip();
-      const results = await Result.getAll(req.params.user, req.params.project);
+    const ownerId = project.user_id;
+    const projectId = project._id;
 
-      const result_path = `/../images/users/${req.params.user}/projects/${req.params.project}/tmp`;
+    const zip = new JSZip();
+    const results = await Result.getAll(ownerId, projectId);
 
-      fs.mkdirSync(path.join(__dirname, result_path), { recursive: true });
+    const result_path = `/../images/users/${ownerId}/projects/${projectId}/tmp`;
 
-      for (let r of results) {
-        const res_path = path.join(__dirname, result_path, r.file_name);
+    fs.mkdirSync(path.join(__dirname, result_path), { recursive: true });
 
-        const resp = await get_image_docker(
-          r.user_id,
-          r.project_id,
-          "out",
-          r.img_key
-        );
-        const url = resp.data.url;
+    for (let r of results) {
+      const res_path = path.join(__dirname, result_path, r.file_name);
 
-        const file_resp = await axios.get(url, { responseType: "stream" });
-        const writer = fs.createWriteStream(res_path);
+      const resp = await get_image_docker(
+        r.user_id,
+        r.project_id,
+        "out",
+        r.img_key
+      );
+      const url = resp.data.url;
 
-        // Use a Promise to handle the stream completion
-        await new Promise((resolve, reject) => {
-          writer.on("finish", resolve);
-          writer.on("error", reject);
-          file_resp.data.pipe(writer); // Pipe AFTER setting up the event handlers
-        });
+      const file_resp = await axios.get(url, { responseType: "stream" });
+      const writer = fs.createWriteStream(res_path);
 
-        const fs_res = fs.readFileSync(res_path);
-        zip.file(r.file_name, fs_res);
-      }
-
-      fs.rmSync(path.join(__dirname, result_path), {
-        recursive: true,
-        force: true,
+      // Use a Promise to handle the stream completion
+      await new Promise((resolve, reject) => {
+        writer.on("finish", resolve);
+        writer.on("error", reject);
+        file_resp.data.pipe(writer); // Pipe AFTER setting up the event handlers
       });
 
-      const ans = await zip.generateAsync({ type: "blob" });
+      const fs_res = fs.readFileSync(res_path);
+      zip.file(r.file_name, fs_res);
+    }
 
-      res.type(ans.type);
-      res.set(
-        "Content-Disposition",
-        `attachment; filename=user_${req.params.user}_project_${req.params.project}_results.zip`
-      );
-      const b = await ans.arrayBuffer();
-      res.status(200).send(Buffer.from(b));
-    })
-    .catch((_) =>
-      res.status(601).jsonp(`Error acquiring project's processing result`)
+    fs.rmSync(path.join(__dirname, result_path), {
+      recursive: true,
+      force: true,
+    });
+
+    const ans = await zip.generateAsync({ type: "blob" });
+
+    res.type(ans.type);
+    res.set(
+      "Content-Disposition",
+      `attachment; filename=user_${ownerId}_project_${projectId}_results.zip`
     );
+    const b = await ans.arrayBuffer();
+    res.status(200).send(Buffer.from(b));
+  } catch (_) {
+    res.status(601).jsonp(`Error acquiring project's processing result`);
+  }
 });
 
 
 // Get results of processing a project
-router.get("/:user/:project/process/url", (req, res, next) => {
-  // Getting last processed request from project in order to get their result's path
+router.get("/:user/:project/process/url", async (req, res, next) => {
+  try {
+    const project = await loadProjectWithShare(req, res, 'view');
+    if (!project) return;
 
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (_) => {
-      const ans = {
-        'imgs': [],
-        'texts': []
-      };
-      const results = await Result.getAll(req.params.user, req.params.project);
+    const ans = {
+      'imgs': [],
+      'texts': []
+    };
+    const results = await Result.getAll(project.user_id, project._id);
 
-      for (let r of results) {
-        const resp = await get_image_host(
-          r.user_id,
-          r.project_id,
-          "out",
-          r.img_key
-        );
-        const url = resp.data.url;
+    for (let r of results) {
+      const resp = await get_image_host(
+        r.user_id,
+        r.project_id,
+        "out",
+        r.img_key
+      );
+      const url = resp.data.url;
 
-        if(r.type == 'text') ans.texts.push({ og_img_id : r.img_id, name: r.file_name, url: url })
+      if(r.type == 'text') ans.texts.push({ og_img_id : r.img_id, name: r.file_name, url: url })
 
-        else ans.imgs.push({ og_img_id : r.img_id, name: r.file_name, url: url })
-      }
+      else ans.imgs.push({ og_img_id : r.img_id, name: r.file_name, url: url })
+    }
 
-      res.status(200).jsonp(ans);
-    })
-    .catch((_) =>
-      res.status(601).jsonp(`Error acquiring project's processing result`)
-    );
+    res.status(200).jsonp(ans);
+  } catch (_) {
+    res.status(601).jsonp(`Error acquiring project's processing result`);
+  }
 });
 
 

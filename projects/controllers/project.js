@@ -8,6 +8,10 @@ module.exports.getOne = async (user_id, project_id) => {
   return await Project.findOne({ user_id: user_id, _id: project_id }).exec();
 };
 
+module.exports.getById = async (project_id) => {
+  return await Project.findOne({ _id: project_id }).exec();
+};
+
 module.exports.create = async (project) => {
   return await Project.create(project);
 };

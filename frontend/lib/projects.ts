@@ -56,11 +56,13 @@ export const fetchProjects = async (uid: string, token: string) => {
   })) as Project[];
 };
 
-export const fetchProject = async (uid: string, pid: string, token: string) => {
+export const fetchProject = async (uid: string, pid: string, token: string, shareToken?: string) => {
   const response = await api.get<SingleProject>(`/projects/${uid}/${pid}`, {
     headers: {
       Authorization: `Bearer ${token}`,
+      ...(shareToken ? { "x-share-token": shareToken } : {}),
     },
+    params: shareToken ? { share: shareToken } : undefined,
   });
 
   if (response.status !== 200 || !response.data)
@@ -161,13 +163,16 @@ export const getProjectImages = async (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const response = await api.get<ProjectImage[]>(
     `/projects/${uid}/${pid}/imgs`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
       },
+      params: shareToken ? { share: shareToken } : undefined,
     },
   );
 
@@ -433,19 +438,23 @@ export const downloadProjectResults = async ({
   pid,
   projectName,
   token,
+  shareToken,
 }: {
   uid: string;
   pid: string;
   projectName: string;
   token: string;
+  shareToken?: string;
 }) => {
   const response = await api.get<ArrayBuffer>(
     `/projects/${uid}/${pid}/process`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
       },
       responseType: "arraybuffer",
+      params: shareToken ? { share: shareToken } : undefined,
     },
   );
 
@@ -467,6 +476,7 @@ export const fetchProjectResults = async (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const response = await api.get<{
     imgs: {
@@ -482,7 +492,9 @@ export const fetchProjectResults = async (
   }>(`/projects/${uid}/${pid}/process/url`, {
     headers: {
       Authorization: `Bearer ${token}`,
+      ...(shareToken ? { "x-share-token": shareToken } : {}),
     },
+    params: shareToken ? { share: shareToken } : undefined,
   });
 
   if (response.status !== 200 || !response.data)

@@ -15,10 +15,10 @@ export const useGetProjects = (uid: string, token: string) => {
   });
 };
 
-export const useGetProject = (uid: string, pid: string, token: string) => {
+export const useGetProject = (uid: string, pid: string, token: string, shareToken?: string) => {
   return useQuery({
-    queryKey: ["project", uid, pid, token],
-    queryFn: () => fetchProject(uid, pid, token),
+    queryKey: ["project", uid, pid, token, shareToken],
+    queryFn: () => fetchProject(uid, pid, token, shareToken),
   });
 };
 
@@ -26,11 +26,12 @@ export const useGetProjectImages = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
   initialData?: ProjectImage[],
 ) => {
   return useQuery({
-    queryKey: ["projectImages", uid, pid, token],
-    queryFn: () => getProjectImages(uid, pid, token),
+    queryKey: ["projectImages", uid, pid, token, shareToken],
+    queryFn: () => getProjectImages(uid, pid, token, shareToken),
     initialData: initialData,
   });
 };
@@ -53,9 +54,10 @@ export const useGetProjectResults = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   return useQuery({
-    queryKey: ["projectResults", uid, pid, token],
-    queryFn: () => fetchProjectResults(uid, pid, token),
+    queryKey: ["projectResults", uid, pid, token, shareToken],
+    queryFn: () => fetchProjectResults(uid, pid, token, shareToken),
   });
 };

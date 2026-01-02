@@ -41,7 +41,7 @@ export default function Project({
   const resolvedParams = use(params);
   const session = useSession();
   const { pid } = resolvedParams;
-  const project = useGetProject(session.user._id, pid, session.token);
+  const project = useGetProject(session.user._id, pid, session.token, shareToken);
   const downloadProjectImages = useDownloadProject();
   const processProject = useProcessProject();
   const downloadProjectResults = useDownloadProjectResults();
@@ -50,6 +50,7 @@ export default function Project({
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "grid";
   const mode = searchParams.get("mode") ?? "edit";
+  const shareToken = searchParams.get("share") ?? undefined;
   const router = useRouter();
   const path = usePathname();
   const sidebar = useSidebar();
@@ -66,6 +67,7 @@ export default function Project({
     session.user._id,
     pid,
     session.token,
+    shareToken,
   );
   const qc = useQueryClient();
 
@@ -223,6 +225,7 @@ export default function Project({
                       pid: project.data._id,
                       token: session.token,
                       projectName: project.data.name,
+                      ...(shareToken ? { shareToken } : {}),
                     },
                     {
                       onSuccess: () => {

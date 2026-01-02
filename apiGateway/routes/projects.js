@@ -11,6 +11,12 @@ const FormData = require("form-data");
 
 const auth = require("../auth/auth");
 
+// Allow share-token access to bypass JWT check; otherwise enforce auth
+function optionalAuth(req, res, next) {
+  if (req.query.share || req.headers["x-share-token"]) return next();
+  return auth.checkToken(req, res, next);
+}
+
 const key = fs.readFileSync(__dirname + "/../certs/selfsigned.key");
 const cert = fs.readFileSync(__dirname + "/../certs/selfsigned.crt");
 
@@ -71,7 +77,7 @@ Post answer structure in case of success
  * @body Empty
  * @returns List of projects, each project has no information about it's images or tools
  */
-router.get("/:user", auth.checkToken, function (req, res, next) {
+router.get("/:user", optionalAuth, function (req, res, next) {
   axios
     .get(projectsURL + `${req.params.user}`, {
       httpsAgent: httpsAgent,
@@ -87,7 +93,7 @@ router.get("/:user", auth.checkToken, function (req, res, next) {
  * @body Empty
  * @returns The required project
  */
-router.get("/:user/:project", auth.checkToken, function (req, res, next) {
+router.get("/:user/:project", optionalAuth, function (req, res, next) {
   axios
     .get(projectsURL + `${req.params.user}/${req.params.project}`, {
       httpsAgent: httpsAgent,
@@ -105,7 +111,7 @@ router.get("/:user/:project", auth.checkToken, function (req, res, next) {
  */
 router.get(
   "/:user/:project/img/:img",
-  auth.checkToken,
+  optionalAuth,
   function (req, res, next) {
     axios
       .get(
@@ -129,7 +135,7 @@ router.get(
  * @body Empty
  * @returns The project's images
  */
-router.get("/:user/:project/imgs", auth.checkToken, function (req, res, next) {
+router.get("/:user/:project/imgs", optionalAuth, function (req, res, next) {
   axios
     .get(projectsURL + `${req.params.user}/${req.params.project}/imgs`, {
       httpsAgent: httpsAgent,
@@ -149,7 +155,7 @@ router.get("/:user/:project/imgs", auth.checkToken, function (req, res, next) {
  */
 router.get(
   "/:user/:project/process",
-  auth.checkToken,
+  optionalAuth,
   function (req, res, next) {
     axios
       .get(projectsURL + `${req.params.user}/${req.params.project}/process`, {
@@ -172,7 +178,7 @@ router.get(
  */
 router.get(
   "/:user/:project/process/url",
-  auth.checkToken,
+  optionalAuth,
   function (req, res, next) {
     axios
       .get(
