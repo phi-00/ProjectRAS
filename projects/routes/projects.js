@@ -84,7 +84,23 @@ function process_msg() {
 
       const user_msg_id = `update-client-process-${uuidv4()}`;
 
+      console.log('[process_msg] Received message:', msg_id);
+
       const process = await Process.getOne(msg_id);
+
+      // Check if process was cancelled
+      if (process && process.status === "cancelled") {
+        console.log('[process_msg] Process was cancelled:', msg_id);
+        await Process.delete(process.user_id, process.project_id, process._id);
+        send_msg_client_error(
+          user_msg_id,
+          timestamp,
+          process.user_id,
+          "00001",
+          "Process was cancelled by user"
+        );
+        return;
+      }
 
       const prev_process_input_img = process.og_img_uri;
       const prev_process_output_img = process.new_img_uri;
@@ -96,7 +112,7 @@ function process_msg() {
       await Process.delete(process.user_id, process.project_id, process._id);
       
       if (msg_content.status === "error") {
-        console.log(JSON.stringify(msg_content));
+        console.log('[process_msg] Error status:', JSON.stringify(msg_content));
         if (/preview/.test(msg_id)) {
           send_msg_client_preview_error(`update-client-preview-${uuidv4()}`, timestamp, process.user_id, msg_content.error.code, msg_content.error.msg)
         }
@@ -189,12 +205,14 @@ function process_msg() {
 
       if(/preview/.test(msg_id) && next_pos >= project.tools.length) return;
 
-      if (!/preview/.test(msg_id))
+      if (!/preview/.test(msg_id)) {
+        console.log('[process_msg] Sending process update for user:', process.user_id);
         send_msg_client(
           user_msg_id,
           timestamp,
           process.user_id
         );
+      }
 
       if (!/preview/.test(msg_id) && (type == "text" || next_pos >= project.tools.length)) {
         const file_path = path.join(__dirname, `/../${output_file_uri}`);
@@ -253,6 +271,8 @@ function process_msg() {
         cur_pos: next_pos,
         og_img_uri: read_img,
         new_img_uri: output_img,
+        status: "processing",
+        start_time: new Date(),
       };
 
       // Making sure database entry is created before sending message to avoid conflicts
@@ -864,6 +884,8 @@ router.post("/:user/:project/process", (req, res, next) => {
               cur_pos: 0,
               og_img_uri: og_img_uri,
               new_img_uri: new_img_uri,
+              status: "processing",
+              start_time: new Date(),
             };
 
             // Making sure database entry is created before sending message to avoid conflicts
@@ -892,6 +914,52 @@ router.post("/:user/:project/process", (req, res, next) => {
         .catch((_) => res.status(400).jsonp(`Error checking if can process`));
     })
     .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+});
+
+// Get active processes for a specific project
+router.get("/:user/:project/processes", (req, res, next) => {
+  Process.getProject(req.params.user, req.params.project)
+    .then((processes) => {
+      const activeProcesses = processes.filter(
+        (p) => p.status === "processing"
+      );
+      res.status(200).jsonp(activeProcesses);
+    })
+    .catch((_) => res.status(501).jsonp("Error acquiring project's processes"));
+});
+
+// Cancel a specific project processing
+router.delete("/:user/:project/process/:process_id", (req, res, next) => {
+  Process.getOne(req.params.user, req.params.project, req.params.process_id)
+    .then(async (process) => {
+      if (!process) {
+        res.status(404).jsonp("Process not found");
+        return;
+      }
+
+      try {
+        // Mark process as cancelled
+        await Process.update(
+          req.params.user,
+          req.params.project,
+          req.params.process_id,
+          { status: "cancelled" }
+        );
+
+        send_msg_client_error(
+          `update-client-process-${uuidv4()}`,
+          new Date().toISOString(),
+          req.params.user,
+          "00000",
+          "Process cancelled by user"
+        );
+
+        res.sendStatus(204);
+      } catch (_) {
+        res.status(500).jsonp("Error cancelling process");
+      }
+    })
+    .catch((_) => res.status(501).jsonp("Error acquiring process"));
 });
 
 // Update a specific project

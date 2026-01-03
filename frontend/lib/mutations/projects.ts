@@ -11,6 +11,7 @@ import {
   downloadProjectImage,
   downloadProjectResults,
   processProject,
+  cancelProcessing,
   updateProject,
   updateProjectTool,
   previewProjectImage,
@@ -150,6 +151,16 @@ export const useDownloadProjectResults = () => {
 export const useProcessProject = () => {
   return useMutation({
     mutationFn: processProject,
+  });
+};
+
+export const useCancelProcessing = (
+  uid: string,
+  pid: string,
+  token: string,
+) => {
+  return useMutation({
+    mutationFn: cancelProcessing,
   });
 };
 

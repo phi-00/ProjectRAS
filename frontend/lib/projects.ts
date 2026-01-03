@@ -39,6 +39,20 @@ export interface ProjectToolResponse extends Omit<ProjectTool, "_id"> {
   _id: string;
 }
 
+export interface ProcessItem {
+  _id: string;
+  user_id: string;
+  project_id: string;
+  img_id: string;
+  msg_id: string;
+  cur_pos: number;
+  og_img_uri: string;
+  new_img_uri: string;
+  status: "processing" | "completed" | "cancelled" | "error";
+  start_time: string;
+  cancelled_time?: string;
+}
+
 export const fetchProjects = async (uid: string, token: string) => {
   const response = await api.get<Project[]>(`/projects/${uid}`, {
     headers: {
@@ -538,4 +552,48 @@ export const processProject = async ({
 
   if (response.status !== 201 || !response.data)
     throw new Error("Failed to request project processing");
+};
+
+export const cancelProcessing = async ({
+  uid,
+  pid,
+  processId,
+  token,
+}: {
+  uid: string;
+  pid: string;
+  processId: string;
+  token: string;
+}) => {
+  const response = await api.delete(
+    `/projects/${uid}/${pid}/process/${processId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (response.status !== 204)
+    throw new Error("Failed to cancel project processing");
+};
+
+export const fetchActiveProcesses = async (
+  uid: string,
+  pid: string,
+  token: string,
+) => {
+  const response = await api.get<ProcessItem[]>(
+    `/projects/${uid}/${pid}/processes`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (response.status !== 200 || !response.data)
+    throw new Error("Failed to fetch active processes");
+
+  return response.data;
 };
