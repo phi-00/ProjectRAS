@@ -133,6 +133,36 @@ router.get("/:user/:project/imgs", auth.checkToken, function (req, res, next) {
 });
 
 /**
+ * Download and convert a single image
+ * @query format - The target format (png, jpeg, bmp, tiff)
+ * @returns The converted image
+ */
+router.get(
+  "/:user/:project/img/:img/download",
+  auth.checkToken,
+  function (req, res, next) {
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = projectsURL + `${req.params.user}/${req.params.project}/img/${req.params.img}/download${queryString ? '?' + queryString : ''}`;
+    console.log(`[GET /img/download] Forwarding to: ${url}`);
+    
+    axios
+      .get(url, {
+        httpsAgent: httpsAgent,
+        responseType: "arraybuffer",
+      })
+      .then((resp) => {
+        res.set("Content-Type", resp.headers["content-type"]);
+        res.set("Content-Disposition", resp.headers["content-disposition"]);
+        res.status(200).send(resp.data);
+      })
+      .catch((err) => {
+        console.error("[GET /img/download] Error:", err.message);
+        res.status(500).jsonp("Error downloading image");
+      });
+  }
+);
+
+/**
  * Get project's processment result
  * @body Empty
  * @returns The required results, sent as a zip

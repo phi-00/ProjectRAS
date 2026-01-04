@@ -30,7 +30,7 @@ export function DownloadFormatDialog({
   const [selectedFormat, setSelectedFormat] = useState<string>("png");
   const { toast } = useToast();
 
-  // Single image: PNG, JPEG, BMP, TIFF options
+  // Single image: PNG, JPEG, TIFF options
   // Multiple images: same formats (images in ZIP)
   const formats = imageCount === 1 
     ? [
@@ -49,7 +49,7 @@ export function DownloadFormatDialog({
         {
           id: "bmp",
           name: "BMP Image",
-          description: "Uncompressed bitmap format",
+          description: "Uncompressed, maximum quality",
           icon: "🎨",
         },
         {
@@ -75,7 +75,7 @@ export function DownloadFormatDialog({
         {
           id: "bmp",
           name: "BMP Images in ZIP",
-          description: "Uncompressed bitmap format",
+          description: "Uncompressed, maximum quality",
           icon: "🎨",
         },
         {

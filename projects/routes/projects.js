@@ -12,8 +12,36 @@ const mime = require("mime-types");
 
 const JSZip = require("jszip");
 const sharp = require("sharp");
+const bmp = require("bmp-js");
 
 const { v4: uuidv4 } = require('uuid');
+
+// Helper function to convert image buffer to BMP using sharp + bmp-js
+async function convertToBmp(inputBuffer) {
+  // Get raw pixel data from sharp (RGBA format)
+  const { data, info } = await sharp(inputBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  // Convert RGBA to ABGR (bmp-js expects ABGR format)
+  const pixelData = Buffer.alloc(info.width * info.height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    pixelData[i] = data[i + 3];     // A
+    pixelData[i + 1] = data[i + 2]; // B
+    pixelData[i + 2] = data[i + 1]; // G
+    pixelData[i + 3] = data[i];     // R
+  }
+  
+  const bmpData = {
+    data: pixelData,
+    width: info.width,
+    height: info.height
+  };
+  
+  const rawBmp = bmp.encode(bmpData);
+  return rawBmp.data;
+}
 
 const {
   send_msg_tool,
@@ -413,6 +441,73 @@ router.get("/:user/:project/imgs", async (req, res, next) => {
     .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
 });
 
+// Download and convert a single image to specified format
+router.get("/:user/:project/img/:img/download", async (req, res, next) => {
+  const format = (req.query.format || "png").toLowerCase();
+  console.log(`[DEBUG] /img/:img/download endpoint called with format: ${format}`);
+  
+  // Validate format
+  const validFormats = ["png", "jpeg", "bmp", "tiff"];
+  if (!validFormats.includes(format)) {
+    return res.status(400).jsonp(`Invalid format. Supported formats: ${validFormats.join(", ")}`);
+  }
+  
+  try {
+    const project = await Project.getOne(req.params.user, req.params.project);
+    const img = project.imgs.filter((i) => i._id == req.params.img)[0];
+    
+    if (!img) {
+      return res.status(404).jsonp("No image with such id.");
+    }
+    
+    // Get image from MinIO
+    const resp = await get_image_docker(
+      req.params.user,
+      req.params.project,
+      "src",
+      img.og_img_key
+    );
+    const url = resp.data.url;
+    
+    // Download image
+    const file_resp = await axios.get(url, { responseType: "arraybuffer" });
+    const imageBuffer = Buffer.from(file_resp.data);
+    
+    // Convert image to requested format
+    let convertedBuffer;
+    const originalName = path.basename(img.og_uri);
+    const newName = originalName.replace(/\.[^/.]+$/, `.${format}`);
+    
+    console.log(`[DEBUG] Converting image: ${originalName} -> ${newName}`);
+    
+    if (format === "png") {
+      convertedBuffer = await sharp(imageBuffer).png().toBuffer();
+    } else if (format === "jpeg") {
+      convertedBuffer = await sharp(imageBuffer).jpeg({ quality: 95 }).toBuffer();
+    } else if (format === "bmp") {
+      convertedBuffer = await convertToBmp(imageBuffer);
+    } else if (format === "tiff") {
+      convertedBuffer = await sharp(imageBuffer).tiff({ quality: 95 }).toBuffer();
+    }
+    
+    // Set correct MIME type
+    const mimeTypes = {
+      png: "image/png",
+      jpeg: "image/jpeg",
+      bmp: "image/bmp",
+      tiff: "image/tiff"
+    };
+    
+    res.set("Content-Type", mimeTypes[format]);
+    res.set("Content-Disposition", `attachment; filename="${newName}"`);
+    res.status(200).send(convertedBuffer);
+    
+  } catch (err) {
+    console.error(`Error downloading/converting image:`, err);
+    res.status(500).jsonp("Error downloading/converting image");
+  }
+});
+
 // Get results of processing a project
 router.get("/:user/:project/process", (req, res, next) => {
   console.log(`[DEBUG] /process endpoint called`);
@@ -492,10 +587,10 @@ router.get("/:user/:project/process", (req, res, next) => {
         return;
       }
 
-      // Handle PNG/JPEG/ZIP formats
+      // Handle image format conversion (PNG/JPEG/BMP/TIFF)
       console.log(`[DEBUG] About to check format condition: format="${format}"`);
-      if (format === "png" || format === "jpeg" || format === "jpg") {
-        console.log(`[DEBUG] ENTERING PNG/JPEG conversion block`);
+      if (format === "png" || format === "jpeg" || format === "bmp" || format === "tiff") {
+        console.log(`[DEBUG] ENTERING image conversion block for format: ${format}`);
         if (imageFiles.length === 1 || (uniqueOriginalImages.size === 1 && imageFiles.length > 0)) {
           console.log(`[DEBUG] Single image detected (files: ${imageFiles.length}, unique: ${uniqueOriginalImages.size}), returning directly`);
           const img = imageFiles[0];
@@ -516,7 +611,7 @@ router.get("/:user/:project/process", (req, res, next) => {
               convertedBuffer = await sharp(fs_res).jpeg({ quality: 95 }).toBuffer();
             } else if (format === "bmp") {
               console.log(`[DEBUG] Converting to BMP (single image)`);
-              convertedBuffer = await sharp(fs_res).toFormat('bmp').toBuffer();
+              convertedBuffer = await convertToBmp(fs_res);
             } else if (format === "tiff") {
               console.log(`[DEBUG] Converting to TIFF (single image)`);
               convertedBuffer = await sharp(fs_res).tiff({ quality: 95 }).toBuffer();
@@ -533,7 +628,14 @@ router.get("/:user/:project/process", (req, res, next) => {
               force: true,
             });
 
-            const mimeType = format === "jpeg" || format === "jpg" ? "image/jpeg" : "image/png";
+            // Set correct MIME type for each format
+            const mimeTypes = {
+              png: "image/png",
+              jpeg: "image/jpeg",
+              bmp: "image/bmp",
+              tiff: "image/tiff"
+            };
+            const mimeType = mimeTypes[format] || "image/png";
             res.set("Content-Type", mimeType);
             res.set(
               "Content-Disposition",
@@ -592,7 +694,7 @@ router.get("/:user/:project/process", (req, res, next) => {
               convertedBuffer = await sharp(fs_res).jpeg({ quality: 95 }).toBuffer();
             } else if (format === "bmp") {
               console.log(`[DEBUG] Converting to BMP`);
-              convertedBuffer = await sharp(fs_res).toFormat('bmp').toBuffer();
+              convertedBuffer = await convertToBmp(fs_res);
             } else if (format === "tiff") {
               console.log(`[DEBUG] Converting to TIFF`);
               convertedBuffer = await sharp(fs_res).tiff({ quality: 95 }).toBuffer();

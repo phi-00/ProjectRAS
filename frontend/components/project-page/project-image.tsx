@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogTrigger,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -55,9 +54,12 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
   const handleDownload = () => {
     downloadImage.mutate(
       {
-        imageUrl: image.url,
+        uid: session.user._id,
+        pid: pid as string,
+        imgId: image._id,
         imageName: image.name,
-        format: selectedDownloadFormat as "png" | "jpeg",
+        token: session.token,
+        format: selectedDownloadFormat as "png" | "jpeg" | "bmp" | "tiff",
       },
       {
         onSuccess: () => {
@@ -79,7 +81,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
 
   return (
     <>
-      <ContextMenu>
+      <ContextMenu modal={true}>
         <ContextMenuTrigger>
           <Card className="group relative overflow-hidden size-full">
             {/* Image */}
@@ -115,26 +117,27 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
             </div>
           </Card>
         </ContextMenuTrigger>
-        <ContextMenuContent>
-          <DialogTrigger asChild onClick={(e) => e.stopPropagation()}>
-            {mode !== "results" && (
-              <ContextMenuItem
-                className="flex justify-between"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteOpen(true);
-                }}
-              >
-                <span>Delete</span>
-                <Trash className="size-4" />
-              </ContextMenuItem>
-            )}
-          </DialogTrigger>
+        <ContextMenuContent
+          onCloseAutoFocus={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {mode !== "results" && (
+            <ContextMenuItem
+              className="flex justify-between"
+              onSelect={() => {
+                setTimeout(() => setDeleteOpen(true), 0);
+              }}
+            >
+              <span>Delete</span>
+              <Trash className="size-4" />
+            </ContextMenuItem>
+          )}
           <ContextMenuItem
             className="flex justify-between"
-            onClick={(e) => {
-              e.stopPropagation();
-              setDownloadOpen(true);
+            onSelect={() => {
+              setTimeout(() => setDownloadOpen(true), 0);
             }}
           >
             <span>Download</span>
@@ -145,7 +148,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
       
       {/* Download Format Dialog */}
       <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
           <DialogHeader>
             <DialogTitle>Download "{image.name}"</DialogTitle>
             <DialogDescription>
@@ -153,56 +156,42 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            <button
-              onClick={() => setSelectedDownloadFormat("png")}
-              className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                selectedDownloadFormat === "png"
-                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
-                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <span className="text-xl">🖼️</span>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">PNG</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Lossless compression, best quality
-                  </p>
+            {[
+              { id: "png", name: "PNG", icon: "🖼️", desc: "Lossless compression, best quality" },
+              { id: "jpeg", name: "JPEG", icon: "📷", desc: "Compressed format, smaller file size" },
+              { id: "bmp", name: "BMP", icon: "🎨", desc: "Uncompressed, maximum quality" },
+              { id: "tiff", name: "TIFF", icon: "🖨️", desc: "High quality, ideal for printing" },
+            ].map((format) => (
+              <button
+                key={format.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedDownloadFormat(format.id);
+                }}
+                className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                  selectedDownloadFormat === format.id
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                    : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="text-xl">{format.icon}</span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{format.name}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {format.desc}
+                    </p>
+                  </div>
+                  <div
+                    className={`w-4 h-4 rounded-full border-2 mt-1 ${
+                      selectedDownloadFormat === format.id
+                        ? "bg-blue-500 border-blue-500"
+                        : "border-gray-300"
+                    }`}
+                  />
                 </div>
-                <div
-                  className={`w-4 h-4 rounded-full border-2 mt-1 ${
-                    selectedDownloadFormat === "png"
-                      ? "bg-blue-500 border-blue-500"
-                      : "border-gray-300"
-                  }`}
-                />
-              </div>
-            </button>
-            <button
-              onClick={() => setSelectedDownloadFormat("jpeg")}
-              className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
-                selectedDownloadFormat === "jpeg"
-                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
-                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
-              }`}
-            >
-              <div className="flex items-start gap-3">
-                <span className="text-xl">📷</span>
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">JPEG</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Compressed format, smaller file size
-                  </p>
-                </div>
-                <div
-                  className={`w-4 h-4 rounded-full border-2 mt-1 ${
-                    selectedDownloadFormat === "jpeg"
-                      ? "bg-blue-500 border-blue-500"
-                      : "border-gray-300"
-                  }`}
-                />
-              </div>
-            </button>
+              </button>
+            ))}
           </div>
           <div className="flex gap-2 justify-end">
             <Button
@@ -231,7 +220,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
+        <DialogContent onClick={(e) => e.stopPropagation()}>
           <DialogHeader>
             <DialogTitle>Are you sure?</DialogTitle>
             <DialogDescription>This action cannot be undone.</DialogDescription>

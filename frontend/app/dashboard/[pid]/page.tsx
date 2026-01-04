@@ -320,7 +320,7 @@ export default function Project({
                         pid: project.data._id,
                         token: session.token,
                         projectName: project.data.name,
-                        format: format as "zip" | "png" | "jpeg",
+                        format: format as "png" | "jpeg" | "tiff",
                       },
                       {
                         onSuccess: () => {
