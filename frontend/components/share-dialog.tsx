@@ -11,7 +11,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Select, SelectItem } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { LoaderCircle, Link, Copy } from "lucide-react";
 import { useCreateShare } from "@/lib/mutations/projects";
@@ -87,8 +87,13 @@ export default function ShareDialog() {
         <div className="grid gap-2">
           <label className="text-sm">Permission</label>
           <Select value={permission} onValueChange={(v) => setPermission(v as any)}>
-            <SelectItem value="view">View</SelectItem>
-            <SelectItem value="edit">Edit</SelectItem>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="view">View</SelectItem>
+              <SelectItem value="edit">Edit</SelectItem>
+            </SelectContent>
           </Select>
 
           <label className="text-sm">Expires (days, optional)</label>
