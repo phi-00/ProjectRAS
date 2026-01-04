@@ -17,6 +17,8 @@ const projectSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, required: true }, // Maybe mudar para falso por causa de users anónimos, ou procurar alguma solução
   imgs: { type: [imgSchema], default: [] },
   tools: { type: [toolSchema], default: [] },
+  shareToken: { type: String, default: null },
+  shareEnabled: { type: Boolean, default: true },
 });
 
 module.exports = mongoose.model("project", projectSchema);

@@ -1077,4 +1077,44 @@ router.delete("/:user/:project/tool/:tool", (req, res, next) => {
     .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
 });
 
+// Generate or toggle share link for a project
+router.post("/:user/:project/share", (req, res, next) => {
+  const { enable } = req.body;
+
+  if (enable === false) {
+    // Disable sharing
+    Project.disableShare(req.params.user, req.params.project)
+      .then(() => res.status(200).jsonp({ shareEnabled: false, shareToken: null }))
+      .catch((err) => {
+        console.error(err);
+        res.status(500).jsonp("Error disabling project sharing");
+      });
+  } else {
+    // Enable sharing and generate token
+    Project.generateShareToken(req.params.user, req.params.project)
+      .then((token) => {
+        res.status(200).jsonp({ shareEnabled: true, shareToken: token });
+      })
+      .catch((err) => {
+        console.error(err);
+        res.status(500).jsonp("Error generating share token");
+      });
+  }
+});
+
+// Get project by share token (public endpoint)
+router.get("/shared/:token", (req, res, next) => {
+  Project.getByShareToken(req.params.token)
+    .then((project) => {
+      if (!project) {
+        return res.status(404).jsonp("Project not found or sharing is disabled");
+      }
+      res.status(200).jsonp(project);
+    })
+    .catch((err) => {
+      console.error(err);
+      res.status(500).jsonp("Error retrieving shared project");
+    });
+});
+
 module.exports = { router, process_msg };

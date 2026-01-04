@@ -400,4 +400,34 @@ router.delete(
   }
 );
 
+/**
+ * Generate or toggle share link for a project
+ * @body { "enable": Boolean }
+ * @returns { "shareEnabled": Boolean, "shareToken": String | null }
+ */
+router.post("/:user/:project/share", auth.checkToken, function (req, res, next) {
+  axios
+    .post(
+      projectsURL + `${req.params.user}/${req.params.project}/share`,
+      req.body,
+      { httpsAgent: httpsAgent }
+    )
+    .then((resp) => res.status(200).jsonp(resp.data))
+    .catch((err) => res.status(500).jsonp("Error managing project sharing"));
+});
+
+/**
+ * Get project by share token (public endpoint)
+ * @body Empty
+ * @returns Project data
+ */
+router.get("/shared/:token", function (req, res, next) {
+  axios
+    .get(projectsURL + `shared/${req.params.token}`, {
+      httpsAgent: httpsAgent,
+    })
+    .then((resp) => res.status(200).jsonp(resp.data))
+    .catch((err) => res.status(404).jsonp("Project not found or sharing is disabled"));
+});
+
 module.exports = router;
