@@ -1,7 +1,14 @@
 const jwt = require("jsonwebtoken");
 
 module.exports.checkToken = (req, res, next) => {
-  const token = req.headers["authorization"].split(" ")[1];
+  const authHeader = req.headers["authorization"];
+  
+  if (!authHeader) {
+    res.status(401).jsonp(`Please provide a JWT token`);
+    return;
+  }
+  
+  const token = authHeader.split(" ")[1];
 
   if (token === null || token === undefined) {
     res.status(401).jsonp(`Please provide a JWT token`);

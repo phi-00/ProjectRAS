@@ -34,6 +34,7 @@ import { ModeToggle } from "@/components/project-page/mode-toggle";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { ProcessingIndicator } from "@/components/processing-indicator";
+import { DownloadFormatDialog } from "@/components/download-format-dialog";
 
 export default function Project({
   params,
@@ -279,40 +280,59 @@ export default function Project({
                   <AddImagesDialog />
                 </>
               )}
-              <Button
-                variant="outline"
-                className="px-3"
-                title="Download project"
-                onClick={() => {
-                  (mode === "edit"
-                    ? downloadProjectImages
-                    : downloadProjectResults
-                  ).mutate(
-                    {
-                      uid: session.user._id,
-                      pid: project.data._id,
-                      token: session.token,
-                      projectName: project.data.name,
-                    },
-                    {
-                      onSuccess: () => {
-                        toast({
-                          title: `Project ${project.data.name} downloaded.`,
-                        });
+              {mode === "edit" ? (
+                <Button
+                  variant="outline"
+                  className="px-3"
+                  title="Download project images"
+                  onClick={() => {
+                    downloadProjectImages.mutate(
+                      {
+                        uid: session.user._id,
+                        pid: project.data._id,
+                        token: session.token,
                       },
-                    },
-                  );
-                }}
-              >
-                {(mode === "edit"
-                  ? downloadProjectImages
-                  : downloadProjectResults
-                ).isPending ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <Download />
-                )}
-              </Button>
+                      {
+                        onSuccess: () => {
+                          toast({
+                            title: `Project ${project.data.name} downloaded.`,
+                          });
+                        },
+                      },
+                    );
+                  }}
+                >
+                  {downloadProjectImages.isPending ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Download />
+                  )}
+                </Button>
+              ) : (
+                <DownloadFormatDialog
+                  projectName={project.data.name}
+                  imageCount={project.data.imgs.length}
+                  isLoading={downloadProjectResults.isPending}
+                  onDownload={async (format) => {
+                    downloadProjectResults.mutate(
+                      {
+                        uid: session.user._id,
+                        pid: project.data._id,
+                        token: session.token,
+                        projectName: project.data.name,
+                        format: format as "zip" | "png" | "jpeg",
+                      },
+                      {
+                        onSuccess: () => {
+                          toast({
+                            title: `Project ${project.data.name} downloaded as ${format.toUpperCase()}.`,
+                          });
+                        },
+                      },
+                    );
+                  }}
+                />
+              )}
               <div className="hidden xl:flex items-center gap-2">
                 <ViewToggle />
                 <ModeToggle />

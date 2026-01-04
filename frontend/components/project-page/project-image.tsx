@@ -38,7 +38,9 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
   const mode = searchParams.get("mode") ?? "edit";
 
   const [loaded, setLoaded] = useState<boolean>(false);
-  const [open, setOpen] = useState<boolean>(false);
+  const [deleteOpen, setDeleteOpen] = useState<boolean>(false);
+  const [downloadOpen, setDownloadOpen] = useState<boolean>(false);
+  const [selectedDownloadFormat, setSelectedDownloadFormat] = useState<string>("png");
 
   const { _id: pid } = useProjectInfo();
   const session = useSession();
@@ -50,8 +52,33 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
   const downloadImage = useDownloadProjectImage(mode === "results");
   const { toast } = useToast();
 
+  const handleDownload = () => {
+    downloadImage.mutate(
+      {
+        imageUrl: image.url,
+        imageName: image.name,
+        format: selectedDownloadFormat as "png" | "jpeg",
+      },
+      {
+        onSuccess: () => {
+          toast({
+            title: `Image ${image.name} downloaded.`,
+          });
+          setDownloadOpen(false);
+        },
+        onError: (error) => {
+          toast({
+            title: "Ups! An error occurred.",
+            description: error.message,
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  };
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <>
       <ContextMenu>
         <ContextMenuTrigger>
           <Card className="group relative overflow-hidden size-full">
@@ -93,7 +120,10 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
             {mode !== "results" && (
               <ContextMenuItem
                 className="flex justify-between"
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteOpen(true);
+                }}
               >
                 <span>Delete</span>
                 <Trash className="size-4" />
@@ -104,26 +134,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
             className="flex justify-between"
             onClick={(e) => {
               e.stopPropagation();
-              downloadImage.mutate(
-                {
-                  imageUrl: image.url,
-                  imageName: image.name,
-                },
-                {
-                  onSuccess: () => {
-                    toast({
-                      title: `Image ${image.name} downloaded.`,
-                    });
-                  },
-                  onError: (error) => {
-                    toast({
-                      title: "Ups! An error occurred.",
-                      description: error.message,
-                      variant: "destructive",
-                    });
-                  },
-                },
-              );
+              setDownloadOpen(true);
             }}
           >
             <span>Download</span>
@@ -131,45 +142,135 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Are you sure?</DialogTitle>
-          <DialogDescription>This action cannot be undone.</DialogDescription>
-        </DialogHeader>
-        <div className="flex justify-end">
-          <Button
-            variant="destructive"
-            onClick={(e) => {
-              deleteImage.mutate(
-                {
-                  uid: session.user._id,
-                  pid: pid as string,
-                  token: session.token,
-                  imageIds: [image._id],
-                },
-                {
-                  onSuccess: () => {
-                    toast({
-                      title: `Image ${image.name} deleted successfully.`,
-                    });
+      
+      {/* Download Format Dialog */}
+      <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Download "{image.name}"</DialogTitle>
+            <DialogDescription>
+              Choose the format for downloading this image
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-4">
+            <button
+              onClick={() => setSelectedDownloadFormat("png")}
+              className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                selectedDownloadFormat === "png"
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-xl">🖼️</span>
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">PNG</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Lossless compression, best quality
+                  </p>
+                </div>
+                <div
+                  className={`w-4 h-4 rounded-full border-2 mt-1 ${
+                    selectedDownloadFormat === "png"
+                      ? "bg-blue-500 border-blue-500"
+                      : "border-gray-300"
+                  }`}
+                />
+              </div>
+            </button>
+            <button
+              onClick={() => setSelectedDownloadFormat("jpeg")}
+              className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
+                selectedDownloadFormat === "jpeg"
+                  ? "border-blue-500 bg-blue-50 dark:bg-blue-950"
+                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+              }`}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-xl">📷</span>
+                <div className="flex-1">
+                  <p className="font-semibold text-sm">JPEG</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Compressed format, smaller file size
+                  </p>
+                </div>
+                <div
+                  className={`w-4 h-4 rounded-full border-2 mt-1 ${
+                    selectedDownloadFormat === "jpeg"
+                      ? "bg-blue-500 border-blue-500"
+                      : "border-gray-300"
+                  }`}
+                />
+              </div>
+            </button>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setDownloadOpen(false)}
+              disabled={downloadImage.isPending}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleDownload} disabled={downloadImage.isPending}>
+              {downloadImage.isPending ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Downloading...
+                </>
+              ) : (
+                <>
+                  <Download className="size-4 mr-2" />
+                  Download
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you sure?</DialogTitle>
+            <DialogDescription>This action cannot be undone.</DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end">
+            <Button
+              variant="destructive"
+              onClick={(e) => {
+                deleteImage.mutate(
+                  {
+                    uid: session.user._id,
+                    pid: pid as string,
+                    token: session.token,
+                    imageIds: [image._id],
                   },
-                  onError: (error) => {
-                    toast({
-                      title: "Ups! An error occurred.",
-                      description: error.message,
-                      variant: "destructive",
-                    });
+                  {
+                    onSuccess: () => {
+                      toast({
+                        title: `Image ${image.name} deleted successfully.`,
+                      });
+                      setDeleteOpen(false);
+                    },
+                    onError: (error) => {
+                      toast({
+                        title: "Ups! An error occurred.",
+                        description: error.message,
+                        variant: "destructive",
+                      });
+                    },
                   },
-                },
-              );
-              setOpen(false);
-              e.stopPropagation();
-            }}
-          >
-            Permanently Delete
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+                );
+                e.stopPropagation();
+              }}
+            >
+              Permanently Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

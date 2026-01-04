@@ -223,9 +223,11 @@ export const getProjectImage = async (
 export const downloadProjectImage = async ({
   imageUrl,
   imageName,
+  format = "png",
 }: {
   imageUrl: string;
   imageName: string;
+  format?: "png" | "jpeg";
 }) => {
   const response = await axios.get<ArrayBuffer>(imageUrl, {
     responseType: "arraybuffer",
@@ -234,11 +236,16 @@ export const downloadProjectImage = async ({
   if (response.status !== 200 || !response.data)
     throw new Error("Failed to download project image");
 
-  const blob = new Blob([response.data], { type: "image/png" });
-  const file = new File([blob], imageName, { type: "image/png" });
+  // Convert if needed
+  const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+  const ext = format === "jpeg" ? "jpg" : "png";
+  const newName = imageName.replace(/\.[^/.]+$/, `.${ext}`);
+
+  const blob = new Blob([response.data], { type: mimeType });
+  const file = new File([blob], newName, { type: mimeType });
 
   return {
-    name: imageName,
+    name: newName,
     file,
   };
 };
@@ -447,12 +454,59 @@ export const downloadProjectResults = async ({
   pid,
   projectName,
   token,
+  format = "zip",
 }: {
   uid: string;
   pid: string;
   projectName: string;
   token: string;
+  format?: "zip" | "png" | "jpeg";
 }) => {
+  // For PNG and JPEG formats
+  if (format === "png" || format === "jpeg") {
+    const response = await api.get<ArrayBuffer>(
+      `/projects/${uid}/${pid}/process?format=${format}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        responseType: "arraybuffer",
+      },
+    );
+
+    if (response.status !== 200 || !response.data)
+      throw new Error("Failed to download project results");
+
+    // Determine MIME type and extension based on format
+    const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
+    const ext = format === "jpeg" ? "jpg" : "png";
+    
+    // Check if it's a ZIP (multiple images)
+    const uint8Array = new Uint8Array(response.data);
+    const isZip = uint8Array[0] === 0x50 && uint8Array[1] === 0x4b; // ZIP magic bytes
+    
+    if (isZip) {
+      // Multiple images: return as ZIP with format type in filename
+      const blob = new Blob([response.data], { type: "application/zip" });
+      const file = new File([blob], `${projectName}_${ext}s.zip`, {
+        type: "application/zip",
+      });
+      return { name: projectName, file };
+    }
+
+    // Single image: return just the image file
+    const blob = new Blob([response.data], { type: mimeType });
+    const file = new File([blob], `${projectName}_result.${ext}`, {
+      type: mimeType,
+    });
+
+    return {
+      name: projectName,
+      file,
+    };
+  }
+
+  // Default ZIP format
   const response = await api.get<ArrayBuffer>(
     `/projects/${uid}/${pid}/process`,
     {

@@ -141,8 +141,13 @@ router.get(
   "/:user/:project/process",
   auth.checkToken,
   function (req, res, next) {
+    // Build URL with query parameters (for format selection)
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = projectsURL + `${req.params.user}/${req.params.project}/process${queryString ? '?' + queryString : ''}`;
+    console.log(`[GET /process] Forwarding to: ${url}`);
+    
     axios
-      .get(projectsURL + `${req.params.user}/${req.params.project}/process`, {
+      .get(url, {
         httpsAgent: httpsAgent,
         responseType: "arraybuffer",
       })
@@ -175,6 +180,33 @@ router.get(
       .catch((err) =>
         res.status(500).jsonp("Error getting processing results")
       );
+  }
+);
+
+/**
+ * Get project's active processes
+ * @body Empty
+ * @returns List of active processes for the project
+ */
+router.get(
+  "/:user/:project/processes",
+  auth.checkToken,
+  function (req, res, next) {
+    const url = projectsURL + `${req.params.user}/${req.params.project}/processes`;
+    console.log("[GET /processes] Gateway forwarding to:", url);
+    axios
+      .get(url, {
+        httpsAgent: httpsAgent,
+      })
+      .then((resp) => {
+        console.log("[GET /processes] Gateway received response:", resp.status);
+        res.status(200).jsonp(resp.data);
+      })
+      .catch((err) => {
+        console.error("[GET /processes] Gateway error:", err.message);
+        console.error("[GET /processes] Error details:", err.response?.status, err.response?.data);
+        res.status(500).jsonp("Error getting active processes");
+      });
   }
 );
 
