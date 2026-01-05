@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEffect } from "react";
 import {
   Dialog,
   DialogTrigger,
@@ -16,7 +17,6 @@ import { Input } from "@/components/ui/input";
 import { LoaderCircle, Link, Copy } from "lucide-react";
 import { useCreateShare } from "@/lib/mutations/projects";
 import { listShares, deleteShare } from "@/lib/projects";
-import { useEffect } from "react";
 import { useSession } from "@/providers/session-provider";
 import { useProjectInfo } from "@/providers/project-provider";
 import { useToast } from "@/hooks/use-toast";
@@ -26,6 +26,7 @@ export default function ShareDialog() {
   const [permission, setPermission] = useState<"view" | "edit">("view");
   const [expiresInDays, setExpiresInDays] = useState<number | undefined>(7);
   const [token, setToken] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   const session = useSession();
   const { _id: pid } = useProjectInfo();
@@ -33,6 +34,11 @@ export default function ShareDialog() {
 
   const createShare = useCreateShare(session.user._id, pid as string, session.token);
   const [shares, setShares] = useState<any[]>([]);
+
+  // Ensure component is mounted before rendering
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -49,6 +55,12 @@ export default function ShareDialog() {
       active = false;
     };
   }, [open, pid, session.user._id, session.token]);
+
+  useEffect(() => {
+    if (open) {
+      setToken(null);
+    }
+  }, [open]);
 
   function handleCreate() {
     createShare.mutate(
@@ -78,77 +90,80 @@ export default function ShareDialog() {
           <Link /> Share
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Share Project</DialogTitle>
-          <DialogDescription>Create a public link (requires login)</DialogDescription>
-        </DialogHeader>
+      {mounted && (
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Share Project</DialogTitle>
+            <DialogDescription>Create a public link (requires login)</DialogDescription>
+          </DialogHeader>
 
-        <div className="grid gap-2">
-          <label className="text-sm">Permission</label>
-          <Select value={permission} onValueChange={(v) => setPermission(v as any)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="view">View</SelectItem>
-              <SelectItem value="edit">Edit</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="grid gap-2">
+            <label className="text-sm">Permission</label>
+            {mounted && (
+              <Select value={permission} onValueChange={(v) => setPermission(v as "view" | "edit")}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select permission" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="view">View</SelectItem>
+                  <SelectItem value="edit">Edit</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
 
-          <label className="text-sm">Expires (days, optional)</label>
-          <Input type="number" value={expiresInDays ?? ""} onChange={(e) => setExpiresInDays(e.target.value ? Number(e.target.value) : undefined)} />
+            <label className="text-sm">Expires (days, optional)</label>
+            <Input type="number" value={expiresInDays ?? ""} onChange={(e) => setExpiresInDays(e.target.value ? Number(e.target.value) : undefined)} />
 
-          {token && (
-            <div className="flex items-center gap-2">
-              <Input readOnly value={`${window.location.origin}/dashboard/${pid}?share=${token}`} />
-              <Button onClick={copyLink}>
-                <Copy />
-              </Button>
-            </div>
-          )}
-
-          {shares.length > 0 && (
-            <div className="mt-3">
-              <label className="text-sm font-semibold">Existing shares</label>
-              <div className="flex flex-col gap-2 mt-2">
-                {shares.map((s) => (
-                  <div key={s.token} className="flex items-center justify-between gap-2">
-                    <div className="text-xs">
-                      <div>perm: {s.permission}</div>
-                      <div>token: {s.token}</div>
-                      {s.expires_at && <div>expires: {new Date(s.expires_at).toLocaleString()}</div>}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={async () => {
-                          await navigator.clipboard.writeText(`${window.location.origin}/dashboard/${pid}?share=${s.token}`);
-                          toast({ title: "Link copied" });
-                        }}
-                      >
-                        <Copy />
-                      </Button>
-                      <Button
-                        onClick={async () => {
-                          try {
-                            await deleteShare({ uid: session.user._id, pid: pid as string, token: session.token, shareToken: s.token });
-                            setShares((prev) => prev.filter((x) => x.token !== s.token));
-                            toast({ title: "Share removed" });
-                          } catch (e: any) {
-                            toast({ title: "Error removing share", description: e.message, variant: "destructive" });
-                          }
-                        }}
-                        variant="destructive"
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+            {token && (
+              <div className="flex items-center gap-2">
+                <Input readOnly value={`${window.location.origin}/dashboard/${pid}?share=${token}`} />
+                <Button onClick={copyLink}>
+                  <Copy />
+                </Button>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+
+            {shares.length > 0 && (
+              <div className="mt-3">
+                <label className="text-sm font-semibold">Existing shares</label>
+                <div className="flex flex-col gap-2 mt-2">
+                  {shares.map((s) => (
+                    <div key={s.token} className="flex items-center justify-between gap-2">
+                      <div className="text-xs">
+                        <div>perm: {s.permission}</div>
+                        <div>token: {s.token}</div>
+                        {s.expires_at && <div>expires: {new Date(s.expires_at).toLocaleString()}</div>}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(`${window.location.origin}/dashboard/${pid}?share=${s.token}`);
+                            toast({ title: "Link copied" });
+                          }}
+                        >
+                          <Copy />
+                        </Button>
+                        <Button
+                          onClick={async () => {
+                            try {
+                              await deleteShare({ uid: session.user._id, pid: pid as string, token: session.token, shareToken: s.token });
+                              setShares((prev) => prev.filter((x) => x.token !== s.token));
+                              toast({ title: "Share removed" });
+                            } catch (e: any) {
+                              toast({ title: "Error removing share", description: e.message, variant: "destructive" });
+                            }
+                          }}
+                          variant="destructive"
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
 
         <DialogFooter>
           <Button onClick={handleCreate} className="inline-flex items-center gap-2">
@@ -156,7 +171,8 @@ export default function ShareDialog() {
             {createShare.isPending && <LoaderCircle className="size-[1em] animate-spin" />}
           </Button>
         </DialogFooter>
-      </DialogContent>
+        </DialogContent>
+      )}
     </Dialog>
   );
 }
