@@ -24,7 +24,8 @@ import { useToast } from "@/hooks/use-toast";
 export default function ShareDialog() {
   const [open, setOpen] = useState(false);
   const [permission, setPermission] = useState<"view" | "edit">("view");
-  const [expiresInDays, setExpiresInDays] = useState<number | undefined>(7);
+  const [expiresInDays, setExpiresInDays] = useState("");
+  const [isValid, setIsValid] = useState(true);
   const [token, setToken] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
 
@@ -60,11 +61,20 @@ export default function ShareDialog() {
     if (open) {
       setToken(null);
     }
-  }, [open]);
+  }, [open, permission, expiresInDays]);
+
+  function handleDaysChange(e: React.ChangeEvent<HTMLInputElement>){
+    //(e) => setExpiresInDays(e.target.value ? Number(e.target.value) : undefined)} />
+    const numberDays = e.target.value;
+    setExpiresInDays(numberDays);
+
+    setIsValid(numberDays === "" || /^\d+$/.test(numberDays) )
+  }
 
   function handleCreate() {
+    const days = expiresInDays === "" ? undefined : Number(expiresInDays);
     createShare.mutate(
-      { permission, expiresInDays },
+      { permission, expiresInDays: days },
       {
         onSuccess: (t: any) => {
           setToken(t);
@@ -112,7 +122,10 @@ export default function ShareDialog() {
             )}
 
             <label className="text-sm">Expires (days, optional)</label>
-            <Input type="number" value={expiresInDays ?? ""} onChange={(e) => setExpiresInDays(e.target.value ? Number(e.target.value) : undefined)} />
+            <Input type="number" value={expiresInDays ?? ""} onChange={handleDaysChange} />
+            {!isValid && (
+              <p className="text-xs text-red-700 mt-2">Please enter a valid number of days.</p>
+            )}
 
             {token && (
               <div className="flex items-center gap-2">
@@ -166,7 +179,7 @@ export default function ShareDialog() {
           </div>
 
         <DialogFooter>
-          <Button onClick={handleCreate} className="inline-flex items-center gap-2">
+          <Button disabled={!isValid} onClick={handleCreate} className="inline-flex items-center gap-2">
             Create
             {createShare.isPending && <LoaderCircle className="size-[1em] animate-spin" />}
           </Button>

@@ -101,7 +101,7 @@ function advanced_tool_num(project) {
 
 // Resolve a project either by (user_id, project_id) or, when a share token is provided,
 // by project_id alone. Also validates the share token for the required permission.
-async function loadProjectWithShare(req, res, requiredPermission = 'view') {
+async function loadProjectWithShare(req, res, requiredPermission) {
   const shareToken = req.query.share || req.headers['x-share-token'];
 
   let project = await Project.getOne(req.params.user, req.params.project);
@@ -117,15 +117,12 @@ async function loadProjectWithShare(req, res, requiredPermission = 'view') {
   }
 
   if (shareToken) {
-    // To avoid blocking shared links due to persistence issues, allow access on any provided token.
-    // Only enforce permissions for edit; view is always allowed when a token exists.
-    if (requiredPermission === 'edit') {
-      const isAllowed = shareAllows(project, shareToken, 'edit');
+      const isAllowed = shareAllows(project, shareToken, requiredPermission);
       if (!isAllowed) {
         res.status(403).jsonp('Invalid or expired share token');
         return null;
       }
-    }
+    
   }
 
   return project;
