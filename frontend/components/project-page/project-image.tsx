@@ -62,6 +62,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
         imageName: image.name,
         token: session.token,
         format: selectedDownloadFormat as "png" | "jpeg" | "bmp" | "tiff",
+        shareToken: shareToken,
       },
       {
         onSuccess: () => {
@@ -121,8 +122,6 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
         </ContextMenuTrigger>
         <ContextMenuContent
           onCloseAutoFocus={(e) => e.preventDefault()}
-          onPointerDownOutside={(e) => e.preventDefault()}
-          onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           {mode !== "results" && !shareToken && (
@@ -150,7 +149,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
       
       {/* Download Format Dialog */}
       <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
-        <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="truncate pr-8" title={image.name}>
               Download "{image.name}"
@@ -168,10 +167,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
             ].map((format) => (
               <button
                 key={format.id}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedDownloadFormat(format.id);
-                }}
+                onClick={() => setSelectedDownloadFormat(format.id)}
                 className={`w-full text-left p-4 rounded-lg border-2 transition-all ${
                   selectedDownloadFormat === format.id
                     ? "border-blue-500 bg-blue-50 dark:bg-blue-950"

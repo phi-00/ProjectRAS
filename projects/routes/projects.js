@@ -167,7 +167,8 @@ function process_msg() {
 
       const user_msg_id = `update-client-process-${uuidv4()}`;
 
-      console.log('[process_msg] Received message:', msg_id);
+      console.log('[process_msg] Received full message:', JSON.stringify(msg_content));
+      console.log('[process_msg] correlationId:', msg_id, 'messageId:', msg_content.messageId);
 
       const process = await Process.getByMsgId(msg_id);
 
@@ -356,6 +357,7 @@ function process_msg() {
         new_img_uri: output_img,
         status: "processing",
         start_time: new Date(),
+        initiated_by: process.initiated_by, // Preserve who started the process chain
       };
 
       // Making sure database entry is created before sending message to avoid conflicts
@@ -632,20 +634,43 @@ router.get("/:user/:project/img/:img/download", async (req, res, next) => {
   }
   
   try {
-    const project = await Project.getOne(req.params.user, req.params.project);
+    const project = await loadProjectWithShare(req, res, 'view');
+    if (!project) return;
+    
     const img = project.imgs.filter((i) => i._id == req.params.img)[0];
     
     if (!img) {
       return res.status(404).jsonp("No image with such id.");
     }
     
-    // Get image from MinIO
-    const resp = await get_image_docker(
-      req.params.user,
-      req.params.project,
-      "src",
-      img.og_img_key
-    );
+    // Check if there's a processed result for this image (use project owner's user_id)
+    const result = await Result.getOne(project.user_id, req.params.project, req.params.img);
+    
+    let resp;
+    let imageName;
+    
+    if (result && result.img_key) {
+      // Use the processed image from "out" folder
+      console.log(`[DEBUG] Found processed result, fetching from "out" with key: ${result.img_key}`);
+      resp = await get_image_docker(
+        project.user_id,
+        req.params.project,
+        "out",
+        result.img_key
+      );
+      imageName = result.file_name || path.basename(img.og_uri);
+    } else {
+      // Fall back to original image from "src" folder
+      console.log(`[DEBUG] No processed result found, fetching original from "src" with key: ${img.og_img_key}`);
+      resp = await get_image_docker(
+        project.user_id,
+        req.params.project,
+        "src",
+        img.og_img_key
+      );
+      imageName = path.basename(img.og_uri);
+    }
+    
     const url = resp.data.url;
     
     // Download image
@@ -654,10 +679,9 @@ router.get("/:user/:project/img/:img/download", async (req, res, next) => {
     
     // Convert image to requested format
     let convertedBuffer;
-    const originalName = path.basename(img.og_uri);
-    const newName = originalName.replace(/\.[^/.]+$/, `.${format}`);
+    const newName = imageName.replace(/\.[^/.]+$/, `.${format}`);
     
-    console.log(`[DEBUG] Converting image: ${originalName} -> ${newName}`);
+    console.log(`[DEBUG] Converting image: ${imageName} -> ${newName}`);
     
     if (format === "png") {
       convertedBuffer = await sharp(imageBuffer).png().toBuffer();
@@ -1030,12 +1054,14 @@ router.post("/:user", (req, res, next) => {
 });
 
 // Preview an image
-router.post("/:user/:project/preview/:img", (req, res, next) => {
+router.post("/:user/:project/preview/:img", async (req, res, next) => {
   // Get project and create a new process entry
   console.log("entrou")
   console.log(req.params.user, req.params.project, req.params.img)
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (project) => {
+  
+  try {
+    const project = await loadProjectWithShare(req, res, 'edit');
+    if (!project) return;
       const prev_preview = await Preview.getAll(
         project.user_id,
         req.params.project
@@ -1114,23 +1140,20 @@ router.post("/:user/:project/preview/:img", (req, res, next) => {
       };
 
       // Making sure database entry is created before sending message to avoid conflicts
-      Process.create(process)
-        .then((_) => {
-          send_msg_tool(
-            msg_id,
-            timestamp,
-            og_img_uri,
-            new_img_uri,
-            tool_name,
-            params
-          );
-          res.sendStatus(201);
-        })
-        .catch((_) =>
-          res.status(603).jsonp(`Error creating preview process request`)
-        );
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+      await Process.create(process);
+      send_msg_tool(
+        msg_id,
+        timestamp,
+        og_img_uri,
+        new_img_uri,
+        tool_name,
+        params
+      );
+      res.sendStatus(201);
+  } catch (err) {
+    console.error('Error in preview route:', err);
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 // Add new image to a project

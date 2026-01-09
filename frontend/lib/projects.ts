@@ -239,6 +239,7 @@ export const downloadProjectImage = async ({
   imageName,
   token,
   format = "png",
+  shareToken,
 }: {
   uid: string;
   pid: string;
@@ -246,9 +247,11 @@ export const downloadProjectImage = async ({
   imageName: string;
   token: string;
   format?: "png" | "jpeg" | "bmp" | "tiff";
+  shareToken?: string;
 }) => {
+  const shareQuery = shareToken ? `&share=${shareToken}` : '';
   const response = await api.get<ArrayBuffer>(
-    `/projects/${uid}/${pid}/img/${imgId}/download?format=${format}`,
+    `/projects/${uid}/${pid}/img/${imgId}/download?format=${format}${shareQuery}`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
@@ -302,6 +305,7 @@ export const downloadProjectImages = async ({
       imageName: image.name,
       token,
       format: "png", // Default format for bulk download
+      shareToken,
     });
     zip.file(name, file);
   }

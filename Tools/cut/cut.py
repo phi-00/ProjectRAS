@@ -28,7 +28,7 @@ class Cut:
     
     def cut_image(self, img_path, store_img_path, dimensions):
         # load image
-        img = self._img_handler.load_image(img_path)
+        img = self._img_handler.get_img(img_path)
         
         # Desempacotar as dimensões
         left, top, right, bottom = dimensions
@@ -43,7 +43,7 @@ class Cut:
         cropped_img = img.crop(crop_box)
         
         # Salvar a imagem cortada
-        self._img_handler.save_image(cropped_img, store_img_path)
+        self._img_handler.store_img(cropped_img, store_img_path)
             
     def cut_callback(self, ch, method, properties, body):
         json_str = body.decode()
