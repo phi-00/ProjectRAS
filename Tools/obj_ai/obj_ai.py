@@ -37,43 +37,33 @@ class Object_ai:
         self._total_processed_counter = 0
         
     def detect_objects(self, image_path, store_img_path, conf_threshold=0.20):
-        
-        #load image
+        # 1. Carregar imagem via PIL
         pil_img = self._img_handler.get_img(image_path)
-        img = np.array(pil_img)
         
-        # Get detections
-        results = self.model(img, conf=conf_threshold)
+        # 2. Executar inferência
+        # Otimização: stream=True ajuda a poupar RAM em imagens grandes
+        results = self.model(pil_img, conf=conf_threshold, stream=True)
         
-        # Get dimensions
-        height, width = img.shape[:2]
+        detections = []
+        for result in results:
+            # Extrair classes detetadas
+            for box in result.boxes:
+                class_id = int(box.cls[0])
+                label = self.model.names[class_id]
+                detections.append(label)
         
-        text_path = f"{store_img_path}_obj_ai_{self._total_processed_counter}.txt"
-        self._total_processed_counter += 1
+        # 3. Gerar ficheiro de texto com os resultados
+        # Conforme o teu código, o output desta ferramenta é 'text'
+        result_text = ", ".join(detections) if detections else "No objects detected"
         
-        with open(text_path, 'w') as text_file:
-            text_file.write("class,confidence,bx,by,bw,bh\n")
-            
-            # Process each detection
-            for r in results:
-                for box in r.boxes:
-                    cls = int(box.cls[0])
-                    conf = float(box.conf[0])
-                    if conf > conf_threshold:
-                        class_name = self.model.names[cls]
-                        x1, y1, x2, y2 = map(float, box.xyxy[0])
-                        
-                        # Calculate normalized box coordinates like people_ai
-                        bx = (x1 + x2) / (2 * width)
-                        by = (y1 + y2) / (2 * height)
-                        bw = (x2 - x1) / width
-                        bh = (y2 - y1) / height
-                        
-                        # Write detection in same format as people_ai
-                        line = f"{class_name},{conf:.2f},{bx:.2f},{by:.2f},{bw:.2f},{bh:.2f}\n"
-                        text_file.write(line)
+        # Usar um context manager (with) para garantir que o ficheiro é fechado
+        with open(store_img_path, 'w') as f:
+            f.write(result_text)
         
-        return text_path
+        # 4. Limpeza de Memória: Essencial para estabilidade do microserviço
+        pil_img.close()
+        return store_img_path
+        
 
     def object_ai_callback(self, ch, method, properties, body):
         json_str = body.decode()

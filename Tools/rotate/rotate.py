@@ -2,7 +2,6 @@ import sys
 import json
 import datetime
 import pytz
-import pytz
 
 from PIL import Image
 
@@ -21,8 +20,21 @@ class Rotate:
         }
 
     def rotate_image(self, img_path, store_img_path, degrees, expand=True):
+        # 1. Carregar a imagem via handler
         img = self._img_handler.get_img(img_path)
-        new_img = img.rotate(degrees, expand=expand)
+        
+        # 2. Otimização de Qualidade e Performance:
+        # Usamos o filtro BICUBIC para garantir que a rotação não serrilha os bordos (RNF61) 
+        # O parâmetro 'expand=True' garante que a imagem não é cortada
+        # Adicionamos 'fillcolor' para garantir que o fundo novo seja consistente (ex: preto)
+        new_img = img.rotate(
+            degrees, 
+            resample=Image.Resampling.BICUBIC, 
+            expand=expand, 
+            fillcolor=(0,0,0) if img.mode == "RGB" else None
+        )
+        
+        # 3. Guardar a imagem processada
         self._img_handler.store_img(new_img, store_img_path)
 
     def rotate_callback(self, ch, method, properties, body):

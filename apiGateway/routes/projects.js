@@ -406,17 +406,33 @@ router.post("/:user/:project/tool", auth.checkToken, function (req, res, next) {
  * @body [{ "position": Number, "procedure": String, "params": Object }] (Position is a unique number between 0 and req.body.length - 1)
  * @returns Post answer structure in case of success
  */
+router.put(
+  "/:user/:project/reorder",
+  auth.checkToken,
+  function (req, res, next) {
+    axios
+      .put(
+        projectsURL + `${req.params.user}/${req.params.project}/reorder`,
+        req.body,
+        { httpsAgent: httpsAgent }
+      )
+      .then((resp) => res.sendStatus(resp.status === 204 ? 204 : 200))
+      .catch((err) => res.status(500).jsonp("Error reordering tools"));
+  }
+);
+
+// Fallback: accept POST as well and forward as PUT to projects service
 router.post(
   "/:user/:project/reorder",
   auth.checkToken,
   function (req, res, next) {
     axios
-      .post(
+      .put(
         projectsURL + `${req.params.user}/${req.params.project}/reorder`,
         req.body,
         { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
-      .then((resp) => res.status(201).jsonp(resp.data))
+      .then((resp) => res.sendStatus(resp.status === 204 ? 204 : 200))
       .catch((err) => res.status(500).jsonp("Error reordering tools"));
   }
 );

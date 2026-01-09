@@ -4,6 +4,7 @@ import datetime
 import pytz
 
 from PIL import Image, ImageEnhance
+import numpy as np
 
 from utils.img_handler import Img_Handler
 from utils.tool_msg import ToolMSG
@@ -25,18 +26,27 @@ class Contrast:
         }
 
     def contrast_image(self, img_path, store_img_path, contrast_factor):
-        # load image
+        # 1. Carregar a imagem através do handler existente
         img = self._img_handler.get_img(img_path)
         
-        # Only convert palette images
-        if img.mode == 'P':
+        # 2. Garantir conversão para RGB para evitar problemas com transparências ou paletas
+        if img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # apply contrast
-        enhancer = ImageEnhance.Contrast(img)
-        new_img = enhancer.enhance(contrast_factor)
+        # 3. Converter para array NumPy (float32 permite cálculos precisos sem overflow imediato)
+        img_array = np.array(img).astype(np.float32)
         
-        # store image
+        # 4. Lógica de Contraste:
+        # O contraste é aplicado em relação ao ponto médio (128)
+        # Fórmula: novo_pixel = médio + fator * (pixel - médio)
+        mean = 128.0
+        img_array = mean + contrast_factor * (img_array - mean)
+        
+        # 5. Cortar valores fora do intervalo [0, 255] e converter de volta para uint8
+        img_array = np.clip(img_array, 0, 255).astype(np.uint8)
+        
+        # 6. Reverter para objeto Image e guardar
+        new_img = Image.fromarray(img_array)
         self._img_handler.store_img(new_img, store_img_path)
 
     def contrast_callback(self, ch, method, properties, body):

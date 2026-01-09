@@ -8,6 +8,7 @@ import {
   fetchActiveProcesses,
 } from "../projects";
 import { io } from "socket.io-client";
+import { api } from "../axios";
 
 export const useGetProjects = (uid: string, token: string) => {
   return useQuery({
@@ -77,4 +78,20 @@ export const useGetActiveProcesses = (
     queryFn: () => fetchActiveProcesses(uid, pid, token),
     refetchInterval: 2000, // Refetch every 2 seconds
   });
+};
+
+export const updateToolsOrder = async (uid: string, pid: string, orderedTools: any[], token: string) => {
+  const response = await api.put(
+    `/projects/${uid}/${pid}/reorder`,
+    orderedTools,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (response.status !== 204 && response.status !== 200) throw new Error('Erro ao reordenar');
+  return response.data;
 };

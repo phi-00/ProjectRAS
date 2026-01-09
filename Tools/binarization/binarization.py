@@ -5,6 +5,7 @@ import datetime
 import pytz
 
 from PIL import Image, ImageOps
+import numpy as np
 
 from utils.img_handler import Img_Handler
 from utils.tool_msg import ToolMSG
@@ -26,14 +27,22 @@ class Binarization:
         }
 
     def add_binarization(self, img_path, output_path, threshold):
-        # load image
+        # 1. Carregar a imagem via handler
         img = self._img_handler.get_img(img_path)
 
-        # add binarization
-        new_img = ImageOps.grayscale(img)
-        new_img = new_img.point(lambda x: 0 if x < threshold else 255)
+        # 2. Converter para tons de cinza conforme a lógica original
+        grayscale_img = ImageOps.grayscale(img)
+        
+        # 3. Converter para array NumPy para processamento instantâneo
+        img_array = np.array(grayscale_img)
 
-        # save image
+        # 4. Lógica de Binarização Vetorizada:
+        # Cria uma matriz onde píxeis < threshold tornam-se 0 e os restantes 255
+        # Esta operação em matriz é ordens de grandeza mais rápida que o .point(lambda)
+        binary_array = np.where(img_array < threshold, 0, 255).astype(np.uint8)
+
+        # 5. Converter de volta para objeto Image e guardar
+        new_img = Image.fromarray(binary_array)
         self._img_handler.store_img(new_img, output_path)
 
     def binarization_callback(self, ch, method, properties, body):

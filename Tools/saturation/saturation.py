@@ -4,6 +4,7 @@ import datetime
 import pytz
 
 from PIL import Image, ImageEnhance
+import numpy as np
 
 from utils.img_handler import Img_Handler
 from utils.tool_msg import ToolMSG
@@ -25,18 +26,31 @@ class Saturation:
         }
 
     def saturation_image(self, img_path, store_img_path, saturation_factor):
-        #load image
+        # 1. Carregar a imagem via img_handler
         img = self._img_handler.get_img(img_path)
         
-        # Only convert palette images
-        if img.mode == 'P':
+        # 2. Garantir conversão para RGB
+        if img.mode != 'RGB':
             img = img.convert('RGB')
         
-        # apply saturation
-        enhancer = ImageEnhance.Color(img)
-        new_img = enhancer.enhance(saturation_factor)
+        # 3. Converter para array NumPy (float32 para precisão nos cálculos)
+        img_array = np.array(img).astype(np.float32)
         
-        # store image
+        # 4. Lógica de Saturação:
+        # Convertemos para o conceito de luminância para ajustar a cor sem afetar o brilho
+        # Pesos padrão para luminância: R:0.299, G:0.587, B:0.114
+        luminance = (img_array[:, :, 0] * 0.299 + 
+                    img_array[:, :, 1] * 0.587 + 
+                    img_array[:, :, 2] * 0.114)[:, :, np.newaxis]
+        
+        # Fórmula: pixel_final = luminância + fator * (pixel_original - luminância)
+        img_array = luminance + saturation_factor * (img_array - luminance)
+        
+        # 5. Normalizar valores entre [0, 255] e converter para o formato de imagem (uint8)
+        img_array = np.clip(img_array, 0, 255).astype(np.uint8)
+        
+        # 6. Criar nova imagem e guardar
+        new_img = Image.fromarray(img_array)
         self._img_handler.store_img(new_img, store_img_path)
 
     def saturation_callback(self, ch, method, properties, body):

@@ -640,6 +640,7 @@ export const processProject = async ({
   if (response.status !== 201 || !response.data)
     throw new Error("Failed to request project processing");
 };
+};
 
 // Share management
 export const createShare = async ({

@@ -1329,6 +1329,19 @@ router.post("/:user/:project/tool", (req, res, next) => {
 });
 
 // Reorder tools of a project
+router.put("/:user/:project/reorder", async (req, res) => {
+  try {
+    const tools = req.body;
+
+    // normalizar positions (segurança extra)
+    const normalizedTools = tools.map((tool, index) => ({
+      ...tool,
+      position: index,
+    }));
+
+    console.log(`[projects] Reorder received for ${req.params.user}/${req.params.project}:`,
+      normalizedTools.map(t => ({ _id: t._id, position: t.position, procedure: t.procedure }))
+    );
 router.post("/:user/:project/reorder", async (req, res, next) => {
   // Remove all tools from project and reinsert them according to new order
   const shareToken = req.query.share || req.headers['x-share-token'];
@@ -1357,9 +1370,16 @@ router.post("/:user/:project/reorder", async (req, res, next) => {
           ...t,
         };
 
-        project["tools"].push(tool);
-      }
+    await Project.update(
+      req.params.user,
+      req.params.project,
+      { tools: normalizedTools }
+    );
 
+    res.sendStatus(204);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json("Error reordering tools");
       Project.update(project.user_id, req.params.project, project)
         .then((project) => res.status(204).jsonp(project))
         .catch((_) =>
@@ -1369,6 +1389,7 @@ router.post("/:user/:project/reorder", async (req, res, next) => {
     res.status(501).jsonp(`Error acquiring user's project`);
   }
 });
+
 
 // Process a specific project
 router.post("/:user/:project/process", async (req, res) => {
@@ -1499,6 +1520,13 @@ router.post("/:user/:project/process", async (req, res) => {
 
           const tool = project.tools.find((t) => t.position === 0);
 
+            const og_img_uri = img.og_uri;
+            const new_img_uri = img.new_uri;
+            const tool = project.tools.find(t => t.position === 0);
+
+            if (!tool) {
+              return res.status(400).jsonp("No tool found at position 0");
+            }
           const process = {
             user_id: project.user_id,
             project_id: req.params.project,

@@ -34,6 +34,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ModeToggle } from "@/components/project-page/mode-toggle";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { PipelineSidebar, Tool } from "@/components/project-page/pipeline-sidebar";
 import { ProcessingIndicator } from "@/components/processing-indicator";
 import { DownloadFormatDialog } from "@/components/download-format-dialog";
 
@@ -205,6 +206,10 @@ export default function Project({
       </div>
     );
 
+  const orderedTools = [...project.data.tools].sort(
+    (a, b) => a.position - b.position
+  );
+
   return (
     <ProjectProvider
       project={project.data}
@@ -276,8 +281,12 @@ export default function Project({
                     disabled={
                       project.data.tools.length <= 0 || waitingForPreview !== ""
                     }
-                    className="inline-flex"
-                    onClick={() => {
+                    onClick={async () => {
+
+                      // 🔥 FORÇA REFRESH DO PROJECTO ANTES DE PROCESSAR
+                      await qc.invalidateQueries({ queryKey: ["project", pid] });
+                      await qc.refetchQueries({ queryKey: ["project", pid] });
+                      
                       processProject.mutate(
                         {
                           uid: session.user._id,
@@ -291,13 +300,7 @@ export default function Project({
                             setCurrentProcessIds([]);
                             sidebar.setOpen(false);
                           },
-                          onError: (error) =>
-                            toast({
-                              title: "Ups! An error occurred.",
-                              description: error.message,
-                              variant: "destructive",
-                            }),
-                        },
+                        }
                       );
                     }}
                   >
@@ -388,14 +391,41 @@ export default function Project({
             </div>
           </div>
         </div>
-        {/* Main Content */}
-        <div className="h-full overflow-x-hidden flex">
-          {mode !== "results" && <Toolbar />}
-          <ProjectImageList
-            setCurrentImageId={setCurrentImage}
-            results={projectResults.data}
-          />
+        {/* Main Content - T-06: Estrutura Simples */}
+        <div className="flex flex-1 flex-row overflow-hidden w-full h-full relative bg-slate-50">
+          
+          {/* Lado Esquerdo: Toolbar com a lista de filtros integrada */}
+          <div className="flex flex-row h-full items-stretch">
+            <Toolbar />
+            
+            {/* T-06: Lista de filtros logo ao lado da Toolbar */}
+            {project.data && (
+              <div className="w-48 border-r bg-white overflow-y-auto flex flex-col">
+                <PipelineSidebar
+                  project={project.data}
+                    token={session.token}
+                    userId={session.user._id}
+                  onUpdate={(newTools: Tool[]) => {
+                    // 🔥 Atualiza o project.data no frontend
+                    qc.setQueryData(["project", project.data._id], (oldData: any) => ({
+                      ...oldData,
+                      tools: newTools,
+                    }));
+                  }}
+                />
+              </div>
+            )}
+          </div>
+          
+          {/* Área da Imagem */}
+          <div className="flex-1 relative overflow-auto flex justify-center items-center p-4">
+            <ProjectImageList
+              setCurrentImageId={setCurrentImage}
+              results={projectResults.data}
+            />
+          </div>
         </div>
+        
       </div>
     </ProjectProvider>
   );
