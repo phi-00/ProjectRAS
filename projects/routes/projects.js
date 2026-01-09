@@ -679,63 +679,17 @@ router.get("/:user/:project/img/:img/download", async (req, res, next) => {
   }
 });
 
-// Get results of processing a project
-router.get("/:user/:project/process", async (req, res, next) => {
-  try {
-    const project = await loadProjectWithShare(req, res, 'view');
-    if (!project) return;
-
-    const ownerId = project.user_id;
-    const projectId = project._id;
-
-    const zip = new JSZip();
-    const results = await Result.getAll(ownerId, projectId);
-
-    const result_path = `/../images/users/${ownerId}/projects/${projectId}/tmp`;
-
-    fs.mkdirSync(path.join(__dirname, result_path), { recursive: true });
-
-    for (let r of results) {
-      const res_path = path.join(__dirname, result_path, r.file_name);
-
-      const resp = await get_image_docker(
-        r.user_id,
-        r.project_id,
-        "out",
-        r.img_key
-      );
-      const url = resp.data.url;
-
-      const file_resp = await axios.get(url, { responseType: "stream" });
-      const writer = fs.createWriteStream(res_path);
-
-      // Use a Promise to handle the stream completion
-      await new Promise((resolve, reject) => {
-        writer.on("finish", resolve);
-        writer.on("error", reject);
-        file_resp.data.pipe(writer); // Pipe AFTER setting up the event handlers
-      });
-
-      const fs_res = fs.readFileSync(res_path);
-      zip.file(r.file_name, fs_res);
-    }
-
-    fs.rmSync(path.join(__dirname, result_path), {
-      recursive: true,
-      force: true,
-    });
-
-    const ans = await zip.generateAsync({ type: "blob" });
-
-    res.type(ans.type);
-    res.set(
-      "Content-Disposition",
-      `attachment; filename=user_${ownerId}_project_${projectId}_results.zip`
+// Get results of processing with format conversion
 router.get("/:user/:project/process", (req, res, next) => {
   console.log(`[DEBUG] /process endpoint called`);
   console.log(`[DEBUG] Query params:`, req.query);
   console.log(`[DEBUG] Full URL:`, req.originalUrl);
-  const format = (req.query.format || "zip").toLowerCase(); // default format is zip
+  // Handle format - could be string or array (if sent multiple times)
+  let formatParam = req.query.format || "zip";
+  if (Array.isArray(formatParam)) {
+    formatParam = formatParam[0]; // Take the first value if it's an array
+  }
+  const format = formatParam.toLowerCase();
   console.log(`[DEBUG] /process endpoint - format after processing: ${format}`);
 
   Project.getOne(req.params.user, req.params.project)
@@ -998,11 +952,6 @@ router.get("/:user/:project/process", (req, res, next) => {
     .catch((_) =>
       res.status(601).jsonp(`Error acquiring project's processing result`)
     );
-    const b = await ans.arrayBuffer();
-    res.status(200).send(Buffer.from(b));
-  } catch (_) {
-    res.status(601).jsonp(`Error acquiring project's processing result`);
-  }
 });
 
 
@@ -1331,7 +1280,23 @@ router.post("/:user/:project/tool", (req, res, next) => {
 // Reorder tools of a project
 router.put("/:user/:project/reorder", async (req, res) => {
   try {
+    const shareToken = req.query.share || req.headers['x-share-token'];
     const tools = req.body;
+
+    let project = await Project.getOne(req.params.user, req.params.project);
+    if (!project && shareToken) {
+      project = await Project.getById(req.params.project);
+    }
+
+    if (!project) {
+      res.status(404).jsonp('Project not found');
+      return;
+    }
+
+    if (shareToken && !shareAllows(project, shareToken, 'edit')) {
+      res.status(403).jsonp('Share token does not allow edit');
+      return;
+    }
 
     // normalizar positions (segurança extra)
     const normalizedTools = tools.map((tool, index) => ({
@@ -1342,36 +1307,9 @@ router.put("/:user/:project/reorder", async (req, res) => {
     console.log(`[projects] Reorder received for ${req.params.user}/${req.params.project}:`,
       normalizedTools.map(t => ({ _id: t._id, position: t.position, procedure: t.procedure }))
     );
-router.post("/:user/:project/reorder", async (req, res, next) => {
-  // Remove all tools from project and reinsert them according to new order
-  const shareToken = req.query.share || req.headers['x-share-token'];
-  
-  let project = await Project.getOne(req.params.user, req.params.project);
-  if (!project && shareToken) {
-    project = await Project.getById(req.params.project);
-  }
-  
-  if (!project) {
-    res.status(404).jsonp('Project not found');
-    return;
-  }
-  
-  if (shareToken && !shareAllows(project, shareToken, 'edit')) {
-    res.status(403).jsonp('Share token does not allow edit');
-    return;
-  }
-  
-  try {
-      project["tools"] = [];
-
-      for (let t of req.body) {
-        const tool = {
-          position: project["tools"].length,
-          ...t,
-        };
 
     await Project.update(
-      req.params.user,
+      project.user_id,
       req.params.project,
       { tools: normalizedTools }
     );
@@ -1380,13 +1318,6 @@ router.post("/:user/:project/reorder", async (req, res, next) => {
   } catch (err) {
     console.error(err);
     res.status(500).json("Error reordering tools");
-      Project.update(project.user_id, req.params.project, project)
-        .then((project) => res.status(204).jsonp(project))
-        .catch((_) =>
-          res.status(503).jsonp(`Error updating project information`)
-        );
-  } catch (error) {
-    res.status(501).jsonp(`Error acquiring user's project`);
   }
 });
 
@@ -1520,13 +1451,10 @@ router.post("/:user/:project/process", async (req, res) => {
 
           const tool = project.tools.find((t) => t.position === 0);
 
-            const og_img_uri = img.og_uri;
-            const new_img_uri = img.new_uri;
-            const tool = project.tools.find(t => t.position === 0);
+          if (!tool) {
+            return res.status(400).jsonp("No tool found at position 0");
+          }
 
-            if (!tool) {
-              return res.status(400).jsonp("No tool found at position 0");
-            }
           const process = {
             user_id: project.user_id,
             project_id: req.params.project,
@@ -1553,17 +1481,6 @@ router.post("/:user/:project/process", async (req, res) => {
           error = true;
         }
       }
-            const process = {
-              user_id: req.params.user,
-              project_id: req.params.project,
-              img_id: img._id,
-              msg_id: msg_id,
-              cur_pos: 0,
-              og_img_uri: og_img_uri,
-              new_img_uri: new_img_uri,
-              status: "processing",
-              start_time: new Date(),
-            };
 
       if (error) {
         return res.status(603).jsonp(

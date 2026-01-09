@@ -155,17 +155,6 @@ export const useProcessProject = () => {
 };
 
 export const useAddProjectTool = (uid: string, pid: string, token: string, shareToken?: string) => {
-export const useCancelProcessing = (
-  uid: string,
-  pid: string,
-  token: string,
-) => {
-  return useMutation({
-    mutationFn: cancelProcessing,
-  });
-};
-
-export const useAddProjectTool = (uid: string, pid: string, token: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: addProjectTool,
@@ -179,6 +168,16 @@ export const useAddProjectTool = (uid: string, pid: string, token: string) => {
         queryKey: ["projectResults", uid, pid, token, shareToken],
       });
     },
+  });
+};
+
+export const useCancelProcessing = (
+  uid: string,
+  pid: string,
+  token: string,
+) => {
+  return useMutation({
+    mutationFn: cancelProcessing,
   });
 };
 

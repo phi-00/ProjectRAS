@@ -112,7 +112,9 @@ export function DownloadFormatDialog({
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Download "{projectName}"</DialogTitle>
+          <DialogTitle className="truncate pr-8" title={projectName}>
+            Download "{projectName}"
+          </DialogTitle>
           <DialogDescription>
             {imageCount === 1
               ? "Choose the image format for download"

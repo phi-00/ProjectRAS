@@ -58,9 +58,6 @@ export default function Project({
   const { toast } = useToast();
   const socket = useGetSocket(session.token);
   const activeProcesses = useGetActiveProcesses(session.user._id, pid, session.token);
-  const searchParams = useSearchParams();
-  const view = searchParams.get("view") ?? "grid";
-  const mode = searchParams.get("mode") ?? "edit";
   const router = useRouter();
   const path = usePathname();
   const sidebar = useSidebar();
@@ -71,6 +68,16 @@ export default function Project({
   const [processingSteps, setProcessingSteps] = useState<number>(1);
   const [waitingForPreview, setWaitingForPreview] = useState<string>("");
   const [currentProcessIds, setCurrentProcessIds] = useState<string[]>([]);
+
+  const totalProcessingSteps =
+    (project.data?.tools.length ?? 0) * (project.data?.imgs.length ?? 0);
+  const projectResults = useGetProjectResults(
+    session.user._id,
+    pid,
+    session.token,
+    shareToken,
+  );
+  const qc = useQueryClient();
 
   // Update current process IDs when active processes change
   useEffect(() => {
@@ -83,16 +90,6 @@ export default function Project({
   useEffect(() => {
     console.log('[Dashboard] Processing state:', processing);
   }, [processing]);
-
-  const totalProcessingSteps =
-    (project.data?.tools.length ?? 0) * (project.data?.imgs.length ?? 0);
-  const projectResults = useGetProjectResults(
-    session.user._id,
-    pid,
-    session.token,
-    shareToken,
-  );
-  const qc = useQueryClient();
 
   useLayoutEffect(() => {
     if (
@@ -160,6 +157,7 @@ export default function Project({
     sidebar,
     isMobile,
     projectResults,
+    shareToken,
   ]);
 
   // Redirect to dashboard if project not found (404)
@@ -310,27 +308,6 @@ export default function Project({
                   <ShareDialog />
                 </>
               )}
-              <Button
-                variant="outline"
-                className="px-3"
-                title="Download project"
-                onClick={() => {
-                  (mode === "edit"
-                    ? downloadProjectImages
-                    : downloadProjectResults
-                  ).mutate(
-                    {
-                      uid: session.user._id,
-                      pid: project.data._id,
-                      token: session.token,
-                      projectName: project.data.name,
-                      ...(shareToken ? { shareToken } : {}),
-                    },
-                    {
-                      onSuccess: () => {
-                        toast({
-                          title: `Project ${project.data.name} downloaded.`,
-                        });
               {mode === "edit" ? (
                 <Button
                   variant="outline"
@@ -342,6 +319,7 @@ export default function Project({
                         uid: session.user._id,
                         pid: project.data._id,
                         token: session.token,
+                        ...(shareToken ? { shareToken } : {}),
                       },
                       {
                         onSuccess: () => {

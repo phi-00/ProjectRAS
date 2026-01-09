@@ -511,14 +511,17 @@ export const downloadProjectResults = async ({
   const { mimeType, ext } = formatInfo[format] || formatInfo.png;
 
   const response = await api.get<ArrayBuffer>(
-    `/projects/${uid}/${pid}/process?format=${format}`,
+    `/projects/${uid}/${pid}/process`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
         ...(shareToken ? { "x-share-token": shareToken } : {}),
       },
       responseType: "arraybuffer",
-      params: shareToken ? { share: shareToken } : undefined,
+      params: {
+        format,
+        ...(shareToken ? { share: shareToken } : {}),
+      },
     },
   );
 
@@ -639,7 +642,7 @@ export const processProject = async ({
 
   if (response.status !== 201 || !response.data)
     throw new Error("Failed to request project processing");
-};
+  return response.data;
 };
 
 // Share management
@@ -661,6 +664,17 @@ export const createShare = async ({
   const response = await api.post<{ token: string }>(
     `/projects/${uid}/${pid}/share`,
     { permission, expiresInDays, created_by },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+
+  if (response.status !== 201 || !response.data) throw new Error("Failed to create share");
+  return response.data.token;
+};
+
 export const cancelProcessing = async ({
   uid,
   pid,
@@ -681,8 +695,7 @@ export const cancelProcessing = async ({
     },
   );
 
-  if (response.status !== 201 || !response.data) throw new Error("Failed to create share");
-  return response.data.token;
+  if (response.status !== 204) throw new Error("Failed to cancel project processing");
 };
 
 export const listShares = async ({ uid, pid, token }: { uid: string; pid: string; token: string }) => {
@@ -700,8 +713,6 @@ export const deleteShare = async ({ uid, pid, token, shareToken }: { uid: string
   });
 
   if (response.status !== 204) throw new Error("Failed to delete share");
-  if (response.status !== 204)
-    throw new Error("Failed to cancel project processing");
 };
 
 export const fetchActiveProcesses = async (

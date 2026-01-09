@@ -75,7 +75,7 @@ export function ProxiedImage({
         URL.revokeObjectURL(imageSrc);
       }
     };
-  }, [src, token, shareToken]);
+  }, [src, token, shareToken, imageSrc]);
 
   if (loading) {
     return <Skeleton className="size-full" />;

@@ -119,24 +119,13 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
             </div>
           </Card>
         </ContextMenuTrigger>
-        <ContextMenuContent>
-          {mode !== "results" && !shareToken && (
-            <DialogTrigger asChild onClick={(e) => e.stopPropagation()}>
-              <ContextMenuItem
-                className="flex justify-between"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <span>Delete</span>
-                <Trash className="size-4" />
-              </ContextMenuItem>
-            </DialogTrigger>
         <ContextMenuContent
           onCloseAutoFocus={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          {mode !== "results" && (
+          {mode !== "results" && !shareToken && (
             <ContextMenuItem
               className="flex justify-between"
               onSelect={() => {
@@ -163,7 +152,9 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
       <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
         <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
           <DialogHeader>
-            <DialogTitle>Download "{image.name}"</DialogTitle>
+            <DialogTitle className="truncate pr-8" title={image.name}>
+              Download "{image.name}"
+            </DialogTitle>
             <DialogDescription>
               Choose the format for downloading this image
             </DialogDescription>
