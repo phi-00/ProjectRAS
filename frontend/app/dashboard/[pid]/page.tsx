@@ -271,8 +271,7 @@ export default function Project({
                       project.data.tools.length <= 0 || waitingForPreview !== ""
                     }
                     onClick={async () => {
-
-                      // 🔥 FORÇA REFRESH DO PROJECTO ANTES DE PROCESSAR
+                      // Force refresh project before processing
                       await qc.invalidateQueries({ queryKey: ["project", pid] });
                       await qc.refetchQueries({ queryKey: ["project", pid] });
                       
@@ -360,14 +359,14 @@ export default function Project({
             </div>
           </div>
         </div>
-        {/* Main Content - T-06: Estrutura Simples */}
+        {/* Main Content */}
         <div className="flex flex-1 flex-row overflow-hidden w-full h-full relative bg-slate-50">
           
-          {/* Lado Esquerdo: Toolbar com a lista de filtros integrada */}
+          {/* Left side: Toolbar with filter list */}
           <div className="flex flex-row h-full items-stretch">
             <Toolbar />
             
-            {/* T-06: Lista de filtros logo ao lado da Toolbar */}
+            {/* Filter list next to Toolbar */}
             {project.data && (
               <div className="w-48 border-r bg-white overflow-y-auto flex flex-col">
                 <PipelineSidebar
@@ -375,7 +374,7 @@ export default function Project({
                     token={session.token}
                     userId={session.user._id}
                   onUpdate={(newTools: Tool[]) => {
-                    // 🔥 Atualiza o project.data no frontend
+                    // Update project.data in frontend
                     qc.setQueryData(["project", project.data._id], (oldData: any) => ({
                       ...oldData,
                       tools: newTools,

@@ -22,7 +22,7 @@ module.exports.create = async (project) => {
 };
 
 module.exports.update = async (user_id, project_id, data) => {
-  // 🔥 GARANTIR QUE TOOLS FICAM COM POSITION CORRETA
+  // Ensure tools have correct position values
   if (data.tools) {
     data.tools = data.tools.map((tool, index) => ({
       ...tool,
@@ -41,11 +41,11 @@ module.exports.delete = (user_id, project_id) => {
 };
 
 module.exports.processPipeline = async (user_id, project_id) => {
-  // 1. Procurar o projeto fresco na BD para garantir que temos as posições novas
+  // Get fresh project from DB to ensure we have the latest positions
   const project = await Project.findOne({ user_id, _id: project_id }).exec();
   if (!project) throw new Error("Project not found");
 
-  // 2. T-06: Ordenar obrigatoriamente pelo campo position antes de enviar para o RabbitMQ
+  // Sort tools by position before sending to RabbitMQ
   const sortedTools = project.tools.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
   for (const img of project.imgs) {

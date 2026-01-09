@@ -20,13 +20,10 @@ class Rotate:
         }
 
     def rotate_image(self, img_path, store_img_path, degrees, expand=True):
-        # 1. Carregar a imagem via handler
         img = self._img_handler.get_img(img_path)
         
-        # 2. Otimização de Qualidade e Performance:
-        # Usamos o filtro BICUBIC para garantir que a rotação não serrilha os bordos (RNF61) 
-        # O parâmetro 'expand=True' garante que a imagem não é cortada
-        # Adicionamos 'fillcolor' para garantir que o fundo novo seja consistente (ex: preto)
+        # Use BICUBIC filter for smooth rotation edges
+        # expand=True ensures the image isn't cropped
         new_img = img.rotate(
             degrees, 
             resample=Image.Resampling.BICUBIC, 
@@ -34,7 +31,6 @@ class Rotate:
             fillcolor=(0,0,0) if img.mode == "RGB" else None
         )
         
-        # 3. Guardar a imagem processada
         self._img_handler.store_img(new_img, store_img_path)
 
     def rotate_callback(self, ch, method, properties, body):

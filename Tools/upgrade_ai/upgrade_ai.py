@@ -74,14 +74,12 @@ class Upgrade_ai:
         }
         
     def enhance_image(self, img_path, store_img_path):
-        # 1. Carregar imagem e garantir formato RGB imediatamente
-        # Otimização: Evita conversões repetidas durante o pipeline
+        # Load image and ensure RGB format
         pil_img = self._img_handler.get_img(img_path).convert('RGB')
         
         params = self.decide_enhancement_parameters(img_path)
 
-        # 2. Processamento OpenCV (CLAHE)
-        # Converter para array NumPy uma única vez
+        # OpenCV processing (CLAHE)
         img_np = np.array(pil_img)
         img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
 
@@ -92,11 +90,10 @@ class Upgrade_ai:
             alpha=params["alpha"]
         )
 
-        # 3. Converter de volta para PIL para os ajustes finais
-        # Otimização: Reutilizar o array para evitar novas alocações de memória
+        # Convert back to PIL for final adjustments
         enhanced_pil = Image.fromarray(cv2.cvtColor(enhanced_cv, cv2.COLOR_BGR2RGB))
 
-        # 4. Ajustes PIL (Brilho, Contraste, Saturação)
+        # PIL adjustments (Brightness, Contrast, Saturation)
         final_pil = self.enhance_image_pil(
             enhanced_pil,
             brightness=params["brightness"],
@@ -104,10 +101,10 @@ class Upgrade_ai:
             saturation=params["saturation"]
         )
         
-        # 5. Guardar e Libertar Recursos (T-03)
+        # Save and release resources
         self._img_handler.store_img(final_pil, store_img_path)
         
-        # Limpeza explícita para evitar erros de memória no Docker
+        # Cleanup to avoid memory errors in Docker
         pil_img.close()
         enhanced_pil.close()
         final_pil.close()

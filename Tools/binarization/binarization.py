@@ -27,21 +27,13 @@ class Binarization:
         }
 
     def add_binarization(self, img_path, output_path, threshold):
-        # 1. Carregar a imagem via handler
         img = self._img_handler.get_img(img_path)
-
-        # 2. Converter para tons de cinza conforme a lógica original
         grayscale_img = ImageOps.grayscale(img)
-        
-        # 3. Converter para array NumPy para processamento instantâneo
         img_array = np.array(grayscale_img)
-
-        # 4. Lógica de Binarização Vetorizada:
-        # Cria uma matriz onde píxeis < threshold tornam-se 0 e os restantes 255
-        # Esta operação em matriz é ordens de grandeza mais rápida que o .point(lambda)
+        
+        # Binarize: pixels < threshold become 0, others 255
         binary_array = np.where(img_array < threshold, 0, 255).astype(np.uint8)
-
-        # 5. Converter de volta para objeto Image e guardar
+        
         new_img = Image.fromarray(binary_array)
         self._img_handler.store_img(new_img, output_path)
 

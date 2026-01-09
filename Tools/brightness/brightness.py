@@ -28,20 +28,10 @@ class Brightness:
         }
 
     def adjust_brightness(self, img_path, store_img_path, brightness_factor):
-        # Carregar imagem
         img = self._img_handler.get_img(img_path)
-        
-        # Converter para array NumPy para processamento ultra-rápido
         img_array = np.array(img.convert('RGB'))
-        
-        # Aplicar brilho de forma vetorizada (operando em toda a matriz de uma vez)
-        # np.clip garante que os valores permanecem entre 0 e 255
         bright_array = np.clip(img_array * brightness_factor, 0, 255).astype(np.uint8)
-        
-        # Converter de volta para imagem
         new_img = Image.fromarray(bright_array)
-        
-        # Guardar imagem
         self._img_handler.store_img(new_img, store_img_path)
 
     def brightness_callback(self, ch, method, properties, body):

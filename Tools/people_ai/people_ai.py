@@ -36,26 +36,22 @@ class People_ai:
         
         self._total_processed_counter = 0
 
-    #1
     def count_people(self, img_path, store_img_path, conf_threshold=0.4):
-        # 1. Carregar imagem via PIL
         pil_img = self._img_handler.get_img(img_path)
         
-        # Otimização: Converter para RGB se necessário para o YOLO
         if pil_img.mode != 'RGB':
             pil_img = pil_img.convert('RGB')
             
         img = np.array(pil_img)
         
-        # 2. Get detections (Apenas classe 0 - Person)
-        # stream=True ajuda a reduzir picos de uso de memória RAM
+        # Detect people (class 0) with streaming to reduce memory usage
         results = self.model(img, classes=[0], conf=conf_threshold, stream=True)
         
         height, width = img.shape[:2]
         text_path = f"{store_img_path}_people_ai_{self._total_processed_counter}.txt"
         self._total_processed_counter += 1
         
-        # 3. Escrita eficiente no ficheiro
+        # Write detections to file
         with open(text_path, 'w') as text_file:
             text_file.write("class,confidence,bx,by,bw,bh\n")
             
@@ -64,7 +60,7 @@ class People_ai:
                     conf = float(box.conf[0])
                     x1, y1, x2, y2 = map(float, box.xyxy[0])
                 
-                    # Coordenadas normalizadas
+                    # Normalized coordinates
                     bx = (x1 + x2) / (2 * width)
                     by = (y1 + y2) / (2 * height)
                     bw = (x2 - x1) / width
@@ -73,9 +69,9 @@ class People_ai:
                     line = f"person,{conf:.2f},{bx:.2f},{by:.2f},{bw:.2f},{bh:.2f}\n"
                     text_file.write(line)
         
-        # 4. Limpeza Crítica de Memória (T-03)
+        # Cleanup
         pil_img.close()
-        del img # Remove o array pesado da memória imediatamente
+        del img
         
         return text_path
     
@@ -115,8 +111,6 @@ class People_ai:
             return
 
         try:
-
-            #4
             text_path = self.count_people(img_path, store_img_path, conf_threshold)
 
             cur_timestamp = datetime.datetime.now(pytz.utc)

@@ -30,35 +30,32 @@ class Text_AI:
         self._total_processed_counter = 0
 
     def ocr(self, image_path, store_txt_path):
-        # 1. Carregar imagem via PIL e converter para array NumPy
+        # Load image and convert to array
         pil_image = self._img_handler.get_img(image_path)
         
-        # Otimização: Garantir RGB antes de converter para BGR (OpenCV)
         if pil_image.mode != 'RGB':
             pil_image = pil_image.convert('RGB')
             
         img = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
         
-        # 2. Pré-processamento Otimizado para OCR
+        # Preprocessing for OCR (grayscale + Otsu threshold + blur)
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # O Threshold de Otsu ajuda a isolar melhor o texto
         gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1]
         gray = cv2.medianBlur(gray, 3)
 
-        # 3. Execução do OCR
+        # Run OCR
         text = pytesseract.image_to_string(gray, config=self.custom_config)
         text = '\n'.join(line.strip() for line in text.splitlines() if line.strip())
         
-        # 4. Escrita do resultado
+        # Write result
         text_path = f"{store_txt_path}_text_ai_{self._total_processed_counter}.txt"
         self._total_processed_counter += 1
         
         with open(text_path, 'w', encoding='utf-8') as text_file:
             text_file.write(text)
     
-        # 5. Limpeza de Memória (T-03)
+        # Cleanup
         pil_image.close()
-        # Eliminar arrays pesados para evitar picos de RAM no Docker
         del img
         del gray
         

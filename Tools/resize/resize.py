@@ -25,13 +25,8 @@ class Resize:
         }
 
     def resize_image(self, img_path, store_img_path, dimensions):
-        # 1. Carregar a imagem via handler
         img = self._img_handler.get_img(img_path)
-        
-        # 2. Otimização: Usar o filtro Lanczos para redução ou Bicubic para ampliação
         new_img = img.resize(dimensions, resample=Image.Resampling.LANCZOS)
-        
-        # 3. Guardar a imagem processada
         self._img_handler.store_img(new_img, store_img_path)
             
     def resize_callback(self, ch, method, properties, body):
