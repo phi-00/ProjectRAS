@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, LoaderCircle, OctagonAlert, Play } from "lucide-react";
+import { Download, LoaderCircle, OctagonAlert, Play, X } from "lucide-react";
 import { ProjectImageList } from "@/components/project-page/project-image-list";
 import { ViewToggle } from "@/components/project-page/view-toggle";
 import { AddImagesDialog } from "@/components/project-page/add-images-dialog";
@@ -10,6 +10,7 @@ import {
   useGetProject,
   useGetProjectResults,
   useGetSocket,
+  useGetActiveProcesses,
 } from "@/lib/queries/projects";
 import Loading from "@/components/loading";
 import { ProjectProvider } from "@/providers/project-provider";
@@ -20,6 +21,7 @@ import {
   useDownloadProject,
   useDownloadProjectResults,
   useProcessProject,
+  useCancelProcessing,
 } from "@/lib/mutations/projects";
 import { useToast } from "@/hooks/use-toast";
 import { ProjectImage } from "@/lib/projects";
@@ -31,6 +33,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ModeToggle } from "@/components/project-page/mode-toggle";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { ProcessingIndicator } from "@/components/processing-indicator";
+import { DownloadFormatDialog } from "@/components/download-format-dialog";
 
 export default function Project({
   params,
@@ -43,9 +47,11 @@ export default function Project({
   const project = useGetProject(session.user._id, pid, session.token);
   const downloadProjectImages = useDownloadProject();
   const processProject = useProcessProject();
+  const cancelProcessing = useCancelProcessing(session.user._id, pid, session.token);
   const downloadProjectResults = useDownloadProjectResults();
   const { toast } = useToast();
   const socket = useGetSocket(session.token);
+  const activeProcesses = useGetActiveProcesses(session.user._id, pid, session.token);
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "grid";
   const mode = searchParams.get("mode") ?? "edit";
@@ -58,6 +64,19 @@ export default function Project({
   const [processingProgress, setProcessingProgress] = useState<number>(0);
   const [processingSteps, setProcessingSteps] = useState<number>(1);
   const [waitingForPreview, setWaitingForPreview] = useState<string>("");
+  const [currentProcessIds, setCurrentProcessIds] = useState<string[]>([]);
+
+  // Update current process IDs when active processes change
+  useEffect(() => {
+    if (activeProcesses.data && processing) {
+      setCurrentProcessIds(activeProcesses.data.map((p) => p._id));
+    }
+  }, [activeProcesses.data, processing]);
+
+  // Debug processing state
+  useEffect(() => {
+    console.log('[Dashboard] Processing state:', processing);
+  }, [processing]);
 
   const totalProcessingSteps =
     (project.data?.tools.length ?? 0) * (project.data?.imgs.length ?? 0);
@@ -79,6 +98,8 @@ export default function Project({
 
   useEffect(() => {
     function onProcessUpdate() {
+      console.log('[Dashboard] Process update received');
+      setProcessing(true); // Ensure processing is set to true when updates arrive
       setProcessingSteps((prev) => prev + 1);
 
       const progress = Math.min(
@@ -86,6 +107,7 @@ export default function Project({
         100,
       );
 
+      console.log('[Dashboard] Progress:', progress, 'Steps:', processingSteps, 'Total:', totalProcessingSteps);
       setProcessingProgress(progress);
       if (processingSteps >= totalProcessingSteps) {
         setTimeout(() => {
@@ -103,8 +125,14 @@ export default function Project({
     let active = true;
 
     if (active && socket.data) {
+      console.log('[Dashboard] Socket connected, listening for process-update');
       socket.data.on("process-update", () => {
+        console.log('[Dashboard] process-update event received');
         if (active) onProcessUpdate();
+      });
+
+      socket.data.on("process-error", (error) => {
+        console.log('[Dashboard] process-error received:', error);
       });
     }
 
@@ -159,6 +187,50 @@ export default function Project({
       preview={{ waiting: waitingForPreview, setWaiting: setWaitingForPreview }}
     >
       <div className="flex flex-col h-screen relative">
+        {/* Processing Indicator Modal */}
+        <ProcessingIndicator
+          processing={processing}
+          progress={processingProgress}
+          onCancel={async () => {
+            try {
+              // Cancel all current processes
+              const cancelPromises = currentProcessIds.map((processId) =>
+                cancelProcessing.mutateAsync({
+                  uid: session.user._id,
+                  pid: project.data._id,
+                  processId,
+                  token: session.token,
+                }),
+              );
+
+              await Promise.all(cancelPromises);
+
+              // Reset state
+              setProcessing(false);
+              setProcessingProgress(0);
+              setProcessingSteps(1);
+              setCurrentProcessIds([]);
+
+              toast({
+                title: "Processing cancelled",
+                description: "The processing has been cancelled successfully.",
+              });
+
+              // Refetch to restore previous state
+              setTimeout(() => {
+                projectResults.refetch();
+              }, 500);
+            } catch (error) {
+              toast({
+                title: "Error cancelling",
+                description: "Failed to cancel the processing.",
+                variant: "destructive",
+              });
+            }
+          }}
+          processingText="Processing Project"
+        />
+        
         {/* Header */}
         <div className="flex flex-col xl:flex-row justify-center items-start xl:items-center xl:justify-between border-b border-sidebar-border py-2 px-2 md:px-3 xl:px-4 h-fit gap-2">
           <div className="flex items-center justify-between w-full xl:w-auto gap-2">
@@ -190,6 +262,7 @@ export default function Project({
                         {
                           onSuccess: () => {
                             setProcessing(true);
+                            setCurrentProcessIds([]);
                             sidebar.setOpen(false);
                           },
                           onError: (error) =>
@@ -207,40 +280,59 @@ export default function Project({
                   <AddImagesDialog />
                 </>
               )}
-              <Button
-                variant="outline"
-                className="px-3"
-                title="Download project"
-                onClick={() => {
-                  (mode === "edit"
-                    ? downloadProjectImages
-                    : downloadProjectResults
-                  ).mutate(
-                    {
-                      uid: session.user._id,
-                      pid: project.data._id,
-                      token: session.token,
-                      projectName: project.data.name,
-                    },
-                    {
-                      onSuccess: () => {
-                        toast({
-                          title: `Project ${project.data.name} downloaded.`,
-                        });
+              {mode === "edit" ? (
+                <Button
+                  variant="outline"
+                  className="px-3"
+                  title="Download project images"
+                  onClick={() => {
+                    downloadProjectImages.mutate(
+                      {
+                        uid: session.user._id,
+                        pid: project.data._id,
+                        token: session.token,
                       },
-                    },
-                  );
-                }}
-              >
-                {(mode === "edit"
-                  ? downloadProjectImages
-                  : downloadProjectResults
-                ).isPending ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <Download />
-                )}
-              </Button>
+                      {
+                        onSuccess: () => {
+                          toast({
+                            title: `Project ${project.data.name} downloaded.`,
+                          });
+                        },
+                      },
+                    );
+                  }}
+                >
+                  {downloadProjectImages.isPending ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <Download />
+                  )}
+                </Button>
+              ) : (
+                <DownloadFormatDialog
+                  projectName={project.data.name}
+                  imageCount={project.data.imgs.length}
+                  isLoading={downloadProjectResults.isPending}
+                  onDownload={async (format) => {
+                    downloadProjectResults.mutate(
+                      {
+                        uid: session.user._id,
+                        pid: project.data._id,
+                        token: session.token,
+                        projectName: project.data.name,
+                        format: format as "png" | "jpeg" | "tiff",
+                      },
+                      {
+                        onSuccess: () => {
+                          toast({
+                            title: `Project ${project.data.name} downloaded as ${format.toUpperCase()}.`,
+                          });
+                        },
+                      },
+                    );
+                  }}
+                />
+              )}
               <div className="hidden xl:flex items-center gap-2">
                 <ViewToggle />
                 <ModeToggle />
@@ -257,25 +349,6 @@ export default function Project({
           />
         </div>
       </div>
-      <Transition
-        show={processing}
-        enter="transition-opacity ease-in duration-300"
-        enterFrom="opacity-0"
-        enterTo="opacity-100"
-        leave="transition-opacity ease-out duration-300"
-        leaveFrom="opacity-100"
-        leaveTo="opacity-0"
-      >
-        <div className="absolute top-0 left-0 h-screen w-screen bg-black/70 z-50 flex justify-center items-center">
-          <Card className="p-4 flex flex-col justify-center items-center gap-4">
-            <div className="flex gap-2 items-center text-lg font-semibold">
-              <h1>Processing</h1>
-              <LoaderCircle className="size-[1em] animate-spin" />
-            </div>
-            <Progress value={processingProgress} className="w-96" />
-          </Card>
-        </div>
-      </Transition>
     </ProjectProvider>
   );
 }

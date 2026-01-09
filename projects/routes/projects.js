@@ -11,8 +11,37 @@ const path = require("path");
 const mime = require("mime-types");
 
 const JSZip = require("jszip");
+const sharp = require("sharp");
+const bmp = require("bmp-js");
 
 const { v4: uuidv4 } = require('uuid');
+
+// Helper function to convert image buffer to BMP using sharp + bmp-js
+async function convertToBmp(inputBuffer) {
+  // Get raw pixel data from sharp (RGBA format)
+  const { data, info } = await sharp(inputBuffer)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  
+  // Convert RGBA to ABGR (bmp-js expects ABGR format)
+  const pixelData = Buffer.alloc(info.width * info.height * 4);
+  for (let i = 0; i < data.length; i += 4) {
+    pixelData[i] = data[i + 3];     // A
+    pixelData[i + 1] = data[i + 2]; // B
+    pixelData[i + 2] = data[i + 1]; // G
+    pixelData[i + 3] = data[i];     // R
+  }
+  
+  const bmpData = {
+    data: pixelData,
+    width: info.width,
+    height: info.height
+  };
+  
+  const rawBmp = bmp.encode(bmpData);
+  return rawBmp.data;
+}
 
 const {
   send_msg_tool,
@@ -84,7 +113,23 @@ function process_msg() {
 
       const user_msg_id = `update-client-process-${uuidv4()}`;
 
+      console.log('[process_msg] Received message:', msg_id);
+
       const process = await Process.getOne(msg_id);
+
+      // Check if process was cancelled
+      if (process && process.status === "cancelled") {
+        console.log('[process_msg] Process was cancelled:', msg_id);
+        await Process.delete(process.user_id, process.project_id, process._id);
+        send_msg_client_error(
+          user_msg_id,
+          timestamp,
+          process.user_id,
+          "00001",
+          "Process was cancelled by user"
+        );
+        return;
+      }
 
       const prev_process_input_img = process.og_img_uri;
       const prev_process_output_img = process.new_img_uri;
@@ -96,7 +141,7 @@ function process_msg() {
       await Process.delete(process.user_id, process.project_id, process._id);
       
       if (msg_content.status === "error") {
-        console.log(JSON.stringify(msg_content));
+        console.log('[process_msg] Error status:', JSON.stringify(msg_content));
         if (/preview/.test(msg_id)) {
           send_msg_client_preview_error(`update-client-preview-${uuidv4()}`, timestamp, process.user_id, msg_content.error.code, msg_content.error.msg)
         }
@@ -189,12 +234,14 @@ function process_msg() {
 
       if(/preview/.test(msg_id) && next_pos >= project.tools.length) return;
 
-      if (!/preview/.test(msg_id))
+      if (!/preview/.test(msg_id)) {
+        console.log('[process_msg] Sending process update for user:', process.user_id);
         send_msg_client(
           user_msg_id,
           timestamp,
           process.user_id
         );
+      }
 
       if (!/preview/.test(msg_id) && (type == "text" || next_pos >= project.tools.length)) {
         const file_path = path.join(__dirname, `/../${output_file_uri}`);
@@ -253,6 +300,8 @@ function process_msg() {
         cur_pos: next_pos,
         og_img_uri: read_img,
         new_img_uri: output_img,
+        status: "processing",
+        start_time: new Date(),
       };
 
       // Making sure database entry is created before sending message to avoid conflicts
@@ -392,58 +441,337 @@ router.get("/:user/:project/imgs", async (req, res, next) => {
     .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
 });
 
+// Download and convert a single image to specified format
+router.get("/:user/:project/img/:img/download", async (req, res, next) => {
+  const format = (req.query.format || "png").toLowerCase();
+  console.log(`[DEBUG] /img/:img/download endpoint called with format: ${format}`);
+  
+  // Validate format
+  const validFormats = ["png", "jpeg", "bmp", "tiff"];
+  if (!validFormats.includes(format)) {
+    return res.status(400).jsonp(`Invalid format. Supported formats: ${validFormats.join(", ")}`);
+  }
+  
+  try {
+    const project = await Project.getOne(req.params.user, req.params.project);
+    const img = project.imgs.filter((i) => i._id == req.params.img)[0];
+    
+    if (!img) {
+      return res.status(404).jsonp("No image with such id.");
+    }
+    
+    // Get image from MinIO
+    const resp = await get_image_docker(
+      req.params.user,
+      req.params.project,
+      "src",
+      img.og_img_key
+    );
+    const url = resp.data.url;
+    
+    // Download image
+    const file_resp = await axios.get(url, { responseType: "arraybuffer" });
+    const imageBuffer = Buffer.from(file_resp.data);
+    
+    // Convert image to requested format
+    let convertedBuffer;
+    const originalName = path.basename(img.og_uri);
+    const newName = originalName.replace(/\.[^/.]+$/, `.${format}`);
+    
+    console.log(`[DEBUG] Converting image: ${originalName} -> ${newName}`);
+    
+    if (format === "png") {
+      convertedBuffer = await sharp(imageBuffer).png().toBuffer();
+    } else if (format === "jpeg") {
+      convertedBuffer = await sharp(imageBuffer).jpeg({ quality: 95 }).toBuffer();
+    } else if (format === "bmp") {
+      convertedBuffer = await convertToBmp(imageBuffer);
+    } else if (format === "tiff") {
+      convertedBuffer = await sharp(imageBuffer).tiff({ quality: 95 }).toBuffer();
+    }
+    
+    // Set correct MIME type
+    const mimeTypes = {
+      png: "image/png",
+      jpeg: "image/jpeg",
+      bmp: "image/bmp",
+      tiff: "image/tiff"
+    };
+    
+    res.set("Content-Type", mimeTypes[format]);
+    res.set("Content-Disposition", `attachment; filename="${newName}"`);
+    res.status(200).send(convertedBuffer);
+    
+  } catch (err) {
+    console.error(`Error downloading/converting image:`, err);
+    res.status(500).jsonp("Error downloading/converting image");
+  }
+});
+
 // Get results of processing a project
 router.get("/:user/:project/process", (req, res, next) => {
-  // Getting last processed request from project in order to get their result's path
+  console.log(`[DEBUG] /process endpoint called`);
+  console.log(`[DEBUG] Query params:`, req.query);
+  console.log(`[DEBUG] Full URL:`, req.originalUrl);
+  const format = (req.query.format || "zip").toLowerCase(); // default format is zip
+  console.log(`[DEBUG] /process endpoint - format after processing: ${format}`);
 
   Project.getOne(req.params.user, req.params.project)
     .then(async (_) => {
-      const zip = new JSZip();
       const results = await Result.getAll(req.params.user, req.params.project);
-
-      const result_path = `/../images/users/${req.params.user}/projects/${req.params.project}/tmp`;
-
-      fs.mkdirSync(path.join(__dirname, result_path), { recursive: true });
-
-      for (let r of results) {
-        const res_path = path.join(__dirname, result_path, r.file_name);
-
-        const resp = await get_image_docker(
-          r.user_id,
-          r.project_id,
-          "out",
-          r.img_key
-        );
-        const url = resp.data.url;
-
-        const file_resp = await axios.get(url, { responseType: "stream" });
-        const writer = fs.createWriteStream(res_path);
-
-        // Use a Promise to handle the stream completion
-        await new Promise((resolve, reject) => {
-          writer.on("finish", resolve);
-          writer.on("error", reject);
-          file_resp.data.pipe(writer); // Pipe AFTER setting up the event handlers
-        });
-
-        const fs_res = fs.readFileSync(res_path);
-        zip.file(r.file_name, fs_res);
+      console.log(`[DEBUG] Total results from DB: ${results.length}`);
+      if (results.length > 0) {
+        console.log(`[DEBUG] First result - type: "${results[0].type}", img_id defined: ${results[0].img_id ? 'YES' : 'NO'}`);
       }
 
-      fs.rmSync(path.join(__dirname, result_path), {
-        recursive: true,
-        force: true,
-      });
+      // Get all image files
+      const result_path = `/../images/users/${req.params.user}/projects/${req.params.project}/tmp`;
+      fs.mkdirSync(path.join(__dirname, result_path), { recursive: true });
 
-      const ans = await zip.generateAsync({ type: "blob" });
+      const imageFiles = [];
+      const uniqueOriginalImages = new Set();
+      
+      for (let r of results) {
+        if (r.type !== "text") { // Skip text files
+          const res_path = path.join(__dirname, result_path, r.file_name);
 
-      res.type(ans.type);
-      res.set(
-        "Content-Disposition",
-        `attachment; filename=user_${req.params.user}_project_${req.params.project}_results.zip`
-      );
-      const b = await ans.arrayBuffer();
-      res.status(200).send(Buffer.from(b));
+          const resp = await get_image_docker(
+            r.user_id,
+            r.project_id,
+            "out",
+            r.img_key
+          );
+          const url = resp.data.url;
+
+          const file_resp = await axios.get(url, { responseType: "stream" });
+          const writer = fs.createWriteStream(res_path);
+
+          // Use a Promise to handle the stream completion
+          await new Promise((resolve, reject) => {
+            writer.on("finish", resolve);
+            writer.on("error", reject);
+            file_resp.data.pipe(writer);
+          });
+
+          // Check what format the file actually is
+          const fileBuffer = fs.readFileSync(res_path);
+          const isPNG = fileBuffer[0] === 0x89 && fileBuffer[1] === 0x50 && fileBuffer[2] === 0x4e && fileBuffer[3] === 0x47;
+          const isJPEG = fileBuffer[0] === 0xff && fileBuffer[1] === 0xd8;
+          const isGIF = fileBuffer[0] === 0x47 && fileBuffer[1] === 0x49 && fileBuffer[2] === 0x46;
+          const actualFormat = isPNG ? 'PNG' : isJPEG ? 'JPEG' : isGIF ? 'GIF' : 'UNKNOWN';
+          console.log(`[DEBUG] File ${r.file_name}: has extension .${path.extname(r.file_name).slice(1)}, actual format: ${actualFormat}`);
+
+          imageFiles.push({
+            path: res_path,
+            name: r.file_name,
+            imgId: r.img_id, // Track original image ID
+          });
+          
+          // Track unique original images (convert to string for comparison)
+          const imgIdStr = r.img_id.toString();
+          uniqueOriginalImages.add(imgIdStr);
+          console.log(`[DEBUG] Added result for image ${imgIdStr}, file: ${r.file_name}`);
+        }
+      }
+      
+      console.log(`[DEBUG] After filtering - imageFiles: ${imageFiles.length}, uniqueImages: ${uniqueOriginalImages.size}`);
+      console.log(`[DEBUG] Unique image IDs: ${Array.from(uniqueOriginalImages).join(', ') || 'NONE'}`);
+      
+      // If no images, return error
+      if (imageFiles.length === 0) {
+        fs.rmSync(path.join(__dirname, result_path), {
+          recursive: true,
+          force: true,
+        });
+        res.status(404).jsonp("No processed images found");
+        return;
+      }
+
+      // Handle image format conversion (PNG/JPEG/BMP/TIFF)
+      console.log(`[DEBUG] About to check format condition: format="${format}"`);
+      if (format === "png" || format === "jpeg" || format === "bmp" || format === "tiff") {
+        console.log(`[DEBUG] ENTERING image conversion block for format: ${format}`);
+        if (imageFiles.length === 1 || (uniqueOriginalImages.size === 1 && imageFiles.length > 0)) {
+          console.log(`[DEBUG] Single image detected (files: ${imageFiles.length}, unique: ${uniqueOriginalImages.size}), returning directly`);
+          const img = imageFiles[0];
+          const fs_res = fs.readFileSync(img.path);
+          
+          try {
+            let convertedBuffer;
+            // Use proper extension for each format
+            const ext = format;
+            const newName = img.name.replace(/\.[^/.]+$/, `.${ext}`);
+            console.log(`[DEBUG] Converting image to ${ext}: ${img.name} -> ${newName}`);
+            
+            if (format === "png") {
+              console.log(`[DEBUG] Converting to PNG (single image)`);
+              convertedBuffer = await sharp(fs_res).png().toBuffer();
+            } else if (format === "jpeg") {
+              console.log(`[DEBUG] Converting to JPEG (single image)`);
+              convertedBuffer = await sharp(fs_res).jpeg({ quality: 95 }).toBuffer();
+            } else if (format === "bmp") {
+              console.log(`[DEBUG] Converting to BMP (single image)`);
+              convertedBuffer = await convertToBmp(fs_res);
+            } else if (format === "tiff") {
+              console.log(`[DEBUG] Converting to TIFF (single image)`);
+              convertedBuffer = await sharp(fs_res).tiff({ quality: 95 }).toBuffer();
+            } else {
+              console.log(`[DEBUG] WARNING: Format did not match any conversion condition (single): ${format}`);
+            }
+            
+            if (!convertedBuffer) {
+              throw new Error(`Conversion resulted in undefined buffer for format: ${format}`);
+            }
+            
+            fs.rmSync(path.join(__dirname, result_path), {
+              recursive: true,
+              force: true,
+            });
+
+            // Set correct MIME type for each format
+            const mimeTypes = {
+              png: "image/png",
+              jpeg: "image/jpeg",
+              bmp: "image/bmp",
+              tiff: "image/tiff"
+            };
+            const mimeType = mimeTypes[format] || "image/png";
+            res.set("Content-Type", mimeType);
+            res.set(
+              "Content-Disposition",
+              `attachment; filename=${newName}`
+            );
+            console.log(`[DEBUG] Sending single image file: ${newName} (${mimeType})`);
+            res.status(200).send(convertedBuffer);
+            return;
+          } catch (err) {
+            console.error(`Error converting image ${img.name} to ${format}:`, err);
+            // Clean up temp directory on error
+            fs.rmSync(path.join(__dirname, result_path), {
+              recursive: true,
+              force: true,
+            });
+            res.status(500).jsonp(`Error converting image to ${format}`);
+            return;
+          }
+        }
+        
+        console.log(`[DEBUG] Multiple images detected (${uniqueOriginalImages.size}), grouping by original image and creating ZIP`);
+        
+        // Multiple original images: return as ZIP with all images converted to the requested format
+        // Group imageFiles by original image and take the latest result for each
+        const imagesByOriginal = {};
+        for (let img of imageFiles) {
+          const imgId = img.imgId ? img.imgId.toString() : `unnamed_${Object.keys(imagesByOriginal).length}`;
+          // Keep only the most recent result for each original image
+          if (!imagesByOriginal[imgId] || imagesByOriginal[imgId].index < imageFiles.indexOf(img)) {
+            imagesByOriginal[imgId] = img;
+            imagesByOriginal[imgId].index = imageFiles.indexOf(img);
+          }
+        }
+        
+        const uniqueImages = Object.values(imagesByOriginal);
+        console.log(`[DEBUG] After grouping: ${uniqueImages.length} unique images will be added to ZIP, converting to ${format}`);
+        const zip = new JSZip();
+        
+        for (let img of uniqueImages) {
+          const fs_res = fs.readFileSync(img.path);
+          
+          // Convert image to the requested format
+          try {
+            let convertedBuffer;
+            // Use proper extension for each format
+            const ext = format;
+            const newName = img.name.replace(/\.[^/.]+$/, `.${ext}`);
+            
+            console.log(`[DEBUG] Converting image for ZIP: ${img.name} -> ${newName} (format: ${format})`);
+            
+            if (format === "png") {
+              console.log(`[DEBUG] Converting to PNG`);
+              convertedBuffer = await sharp(fs_res).png().toBuffer();
+            } else if (format === "jpeg") {
+              console.log(`[DEBUG] Converting to JPEG`);
+              convertedBuffer = await sharp(fs_res).jpeg({ quality: 95 }).toBuffer();
+            } else if (format === "bmp") {
+              console.log(`[DEBUG] Converting to BMP`);
+              convertedBuffer = await convertToBmp(fs_res);
+            } else if (format === "tiff") {
+              console.log(`[DEBUG] Converting to TIFF`);
+              convertedBuffer = await sharp(fs_res).tiff({ quality: 95 }).toBuffer();
+            } else {
+              console.log(`[DEBUG] WARNING: Format did not match any conversion condition: ${format}`);
+            }
+            
+            if (convertedBuffer) {
+              zip.file(newName, convertedBuffer);
+              console.log(`[DEBUG] Successfully added converted image: ${newName} (${convertedBuffer.length} bytes)`);
+            } else {
+              throw new Error(`Conversion resulted in undefined buffer for format: ${format}`);
+            }
+          } catch (err) {
+            console.error(`Error converting image ${img.name} to ${format}:`, err);
+            // If conversion fails, add original file with correct extension
+            const ext = format;
+            const newName = img.name.replace(/\.[^/.]+$/, `.${ext}`);
+            console.log(`[DEBUG] Adding original file as fallback: ${newName}`);
+            zip.file(newName, fs_res);
+          }
+        }
+
+        fs.rmSync(path.join(__dirname, result_path), {
+          recursive: true,
+          force: true,
+        });
+
+        const ans = await zip.generateAsync({ type: "blob" });
+        res.set("Content-Type", "application/zip");
+        res.set(
+          "Content-Disposition",
+          `attachment; filename=user_${req.params.user}_project_${req.params.project}_results_${format}s.zip`
+        );
+        const b = await ans.arrayBuffer();
+        res.status(200).send(Buffer.from(b));
+      } else {
+        // Default ZIP format
+        const zip = new JSZip();
+
+        for (let img of imageFiles) {
+          const fs_res = fs.readFileSync(img.path);
+          
+          // Detect actual file format and fix extension if needed
+          const isPNG = fs_res[0] === 0x89 && fs_res[1] === 0x50 && fs_res[2] === 0x4e && fs_res[3] === 0x47;
+          const isJPEG = fs_res[0] === 0xff && fs_res[1] === 0xd8;
+          const isGIF = fs_res[0] === 0x47 && fs_res[1] === 0x49 && fs_res[2] === 0x46;
+          
+          let correctName = img.name;
+          if (isPNG && !img.name.toLowerCase().endsWith('.png')) {
+            correctName = img.name.replace(/\.[^/.]+$/, '.png');
+            console.log(`[DEBUG] Fixed PNG filename from ${img.name} to ${correctName}`);
+          } else if (isJPEG && !img.name.toLowerCase().endsWith('.jpg') && !img.name.toLowerCase().endsWith('.jpeg')) {
+            correctName = img.name.replace(/\.[^/.]+$/, '.jpg');
+            console.log(`[DEBUG] Fixed JPEG filename from ${img.name} to ${correctName}`);
+          } else if (isGIF && !img.name.toLowerCase().endsWith('.gif')) {
+            correctName = img.name.replace(/\.[^/.]+$/, '.gif');
+            console.log(`[DEBUG] Fixed GIF filename from ${img.name} to ${correctName}`);
+          }
+          
+          zip.file(correctName, fs_res);
+        }
+
+        fs.rmSync(path.join(__dirname, result_path), {
+          recursive: true,
+          force: true,
+        });
+
+        const ans = await zip.generateAsync({ type: "blob" });
+        res.set("Content-Type", "application/zip");
+        res.set(
+          "Content-Disposition",
+          `attachment; filename=user_${req.params.user}_project_${req.params.project}_results.zip`
+        );
+        const b = await ans.arrayBuffer();
+        res.status(200).send(Buffer.from(b));
+      }
     })
     .catch((_) =>
       res.status(601).jsonp(`Error acquiring project's processing result`)
@@ -668,7 +996,7 @@ router.post(
             // Insert new image
             project["imgs"].push({
               og_uri: og_uri,
-              new_uri: new_uri,
+              new_uri: `./images/users/${req.params.user}/projects/${req.params.project}/out/${path.parse(req.file.originalname).name}.png`,
               og_img_key: og_key,
             });
 
@@ -864,6 +1192,8 @@ router.post("/:user/:project/process", (req, res, next) => {
               cur_pos: 0,
               og_img_uri: og_img_uri,
               new_img_uri: new_img_uri,
+              status: "processing",
+              start_time: new Date(),
             };
 
             // Making sure database entry is created before sending message to avoid conflicts
@@ -892,6 +1222,58 @@ router.post("/:user/:project/process", (req, res, next) => {
         .catch((_) => res.status(400).jsonp(`Error checking if can process`));
     })
     .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+});
+
+// Get active processes for a specific project
+router.get("/:user/:project/processes", (req, res, next) => {
+  console.log("[GET /processes] Received request for user:", req.params.user, "project:", req.params.project);
+  
+  Process.getProject(req.params.user, req.params.project)
+    .then((processes) => {
+      console.log("[GET /processes] Got processes:", processes?.length || 0);
+      // Filter for only active processes
+      const activeProcesses = processes.filter((p) => p.status === "processing");
+      console.log("[GET /processes] Returning active processes:", activeProcesses?.length || 0);
+      res.status(200).jsonp(activeProcesses);
+    })
+    .catch((err) => {
+      console.error("[GET /processes] Error:", err.message || err);
+      res.status(501).jsonp("Error acquiring project's processes");
+    });
+});
+
+// Cancel a specific project processing
+router.delete("/:user/:project/process/:process_id", (req, res, next) => {
+  Process.getOne(req.params.user, req.params.project, req.params.process_id)
+    .then(async (process) => {
+      if (!process) {
+        res.status(404).jsonp("Process not found");
+        return;
+      }
+
+      try {
+        // Mark process as cancelled
+        await Process.update(
+          req.params.user,
+          req.params.project,
+          req.params.process_id,
+          { status: "cancelled" }
+        );
+
+        send_msg_client_error(
+          `update-client-process-${uuidv4()}`,
+          new Date().toISOString(),
+          req.params.user,
+          "00000",
+          "Process cancelled by user"
+        );
+
+        res.sendStatus(204);
+      } catch (_) {
+        res.status(500).jsonp("Error cancelling process");
+      }
+    })
+    .catch((_) => res.status(501).jsonp("Error acquiring process"));
 });
 
 // Update a specific project
