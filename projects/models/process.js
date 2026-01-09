@@ -8,6 +8,7 @@ var processSchema = new mongoose.Schema({
   cur_pos: { type: Number, required: true },
   og_img_uri: { type: String, required: true },
   new_img_uri: { type: String, required: true },
+  initiated_by: { type: mongoose.Schema.Types.ObjectId, required: false },
 });
 
 module.exports = mongoose.model("process", processSchema);

@@ -36,6 +36,7 @@ interface ImageItemProps {
 export function ProjectImage({ image, animation = true }: ImageItemProps) {
   const searchParams = useSearchParams();
   const mode = searchParams.get("mode") ?? "edit";
+  const shareToken = searchParams.get("share") ?? undefined;
 
   const [loaded, setLoaded] = useState<boolean>(false);
   const [open, setOpen] = useState<boolean>(false);
@@ -46,6 +47,7 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
     session.user._id,
     pid as string,
     session.token,
+    shareToken,
   );
   const downloadImage = useDownloadProjectImage(mode === "results");
   const { toast } = useToast();
@@ -89,8 +91,8 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
           </Card>
         </ContextMenuTrigger>
         <ContextMenuContent>
-          <DialogTrigger asChild onClick={(e) => e.stopPropagation()}>
-            {mode !== "results" && (
+          {mode !== "results" && !shareToken && (
+            <DialogTrigger asChild onClick={(e) => e.stopPropagation()}>
               <ContextMenuItem
                 className="flex justify-between"
                 onClick={(e) => e.stopPropagation()}
@@ -98,8 +100,8 @@ export function ProjectImage({ image, animation = true }: ImageItemProps) {
                 <span>Delete</span>
                 <Trash className="size-4" />
               </ContextMenuItem>
-            )}
-          </DialogTrigger>
+            </DialogTrigger>
+          )}
           <ContextMenuItem
             className="flex justify-between"
             onClick={(e) => {

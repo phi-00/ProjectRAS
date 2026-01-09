@@ -57,24 +57,31 @@ export const fetchProjects = async (uid: string, token: string) => {
 };
 
 export const fetchProject = async (uid: string, pid: string, token: string, shareToken?: string) => {
-  const response = await api.get<SingleProject>(`/projects/${uid}/${pid}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(shareToken ? { "x-share-token": shareToken } : {}),
-    },
-    params: shareToken ? { share: shareToken } : undefined,
-  });
+  try {
+    const response = await api.get<SingleProject>(`/projects/${uid}/${pid}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
+      },
+      params: shareToken ? { share: shareToken } : undefined,
+    });
 
-  if (response.status !== 200 || !response.data)
-    throw new Error("Failed to fetch project");
+    if (response.status !== 200 || !response.data)
+      throw new Error("Failed to fetch project");
 
-  return {
-    _id: response.data._id,
-    user_id: response.data.user_id,
-    name: response.data.name,
-    imgs: response.data.imgs,
-    tools: response.data.tools,
-  } as SingleProject;
+    return {
+      _id: response.data._id,
+      user_id: response.data.user_id,
+      name: response.data.name,
+      imgs: response.data.imgs,
+      tools: response.data.tools,
+    } as SingleProject;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      throw new Error("Project not found (404)");
+    }
+    throw new Error(error.message || "Failed to fetch project");
+  }
 };
 
 export const addProject = async ({
@@ -480,65 +487,74 @@ export const fetchProjectResults = async (
   token: string,
   shareToken?: string,
 ) => {
-  const response = await api.get<{
-    imgs: {
-      og_img_id: string;
-      name: string;
-      url: string;
-    }[];
-    texts: {
-      og_img_id: string;
-      name: string;
-      url: string;
-    }[];
-  }>(`/projects/${uid}/${pid}/process/url`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(shareToken ? { "x-share-token": shareToken } : {}),
-    },
-    params: shareToken ? { share: shareToken } : undefined,
-  });
-
-  if (response.status !== 200 || !response.data)
-    throw new Error("Failed to fetch project results");
-
-  const texts: ProjectImageText[] = [];
-  for (const text of response.data.texts) {
-    const response = await axios.get<string>(text.url, {
-      responseType: "text",
+  try {
+    const response = await api.get<{
+      imgs: {
+        og_img_id: string;
+        name: string;
+        url: string;
+      }[];
+      texts: {
+        og_img_id: string;
+        name: string;
+        url: string;
+      }[];
+    }>(`/projects/${uid}/${pid}/process/url`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
+      },
+      params: shareToken ? { share: shareToken } : undefined,
     });
 
     if (response.status !== 200 || !response.data)
-      throw new Error("Failed to fetch text");
+      throw new Error("Failed to fetch project results");
 
-    texts.push({
-      _id: text.og_img_id,
-      name: text.name,
-      text: response.data,
-    });
+    const texts: ProjectImageText[] = [];
+    for (const text of response.data.texts) {
+      const response = await axios.get<string>(text.url, {
+        responseType: "text",
+      });
+
+      if (response.status !== 200 || !response.data)
+        throw new Error("Failed to fetch text");
+
+      texts.push({
+        _id: text.og_img_id,
+        name: text.name,
+        text: response.data,
+      });
+    }
+
+    return {
+      imgs: response.data.imgs.map(
+        (img) =>
+          ({
+            _id: img.og_img_id,
+            name: img.name,
+            url: img.url,
+          }) as ProjectImage,
+      ),
+      texts: texts,
+    };
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      throw new Error("Project results not found (404)");
+    }
+    throw new Error(error.message || "Failed to fetch project results");
   }
-
-  return {
-    imgs: response.data.imgs.map(
-      (img) =>
-        ({
-          _id: img.og_img_id,
-          name: img.name,
-          url: img.url,
-        }) as ProjectImage,
-    ),
-    texts: texts,
-  };
 };
 
 export const processProject = async ({
   uid,
   pid,
   token,
+  shareToken,
 }: {
   uid: string;
   pid: string;
   token: string;
+  shareToken?: string;
 }) => {
   const response = await api.post<string>(
     `/projects/${uid}/${pid}/process`,
@@ -546,7 +562,9 @@ export const processProject = async ({
     {
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
       },
+      params: shareToken ? { share: shareToken } : undefined,
     },
   );
 

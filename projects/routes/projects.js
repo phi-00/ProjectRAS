@@ -247,7 +247,7 @@ function process_msg() {
         send_msg_client(
           user_msg_id,
           timestamp,
-          process.user_id
+          process.initiated_by || process.user_id
         );
 
       if (!/preview/.test(msg_id) && (type == "text" || next_pos >= project.tools.length)) {
@@ -698,19 +698,19 @@ router.post("/:user/:project/preview/:img", (req, res, next) => {
   Project.getOne(req.params.user, req.params.project)
     .then(async (project) => {
       const prev_preview = await Preview.getAll(
-        req.params.user,
+        project.user_id,
         req.params.project
       );
 
       for(let p of prev_preview){
         await delete_image(
-          req.params.user,
+          project.user_id,
           req.params.project,
           "preview",
           p.img_key
         );
         await Preview.delete(
-          req.params.user,
+          project.user_id,
           req.params.project,
           p.img_id
         );
@@ -720,8 +720,8 @@ router.post("/:user/:project/preview/:img", (req, res, next) => {
       if (prev_preview !== null && prev_preview !== undefined) {
       }
 
-      const source_path = `/../images/users/${req.params.user}/projects/${req.params.project}/src`;
-      const result_path = `/../images/users/${req.params.user}/projects/${req.params.project}/preview`;
+      const source_path = `/../images/users/${project.user_id}/projects/${req.params.project}/src`;
+      const result_path = `/../images/users/${project.user_id}/projects/${req.params.project}/preview`;
 
       if (!fs.existsSync(path.join(__dirname, source_path)))
         fs.mkdirSync(path.join(__dirname, source_path), { recursive: true });
@@ -738,7 +738,7 @@ router.post("/:user/:project/preview/:img", (req, res, next) => {
 
       // Retrieve image and store it using file system
       const resp = await get_image_docker(
-        req.params.user,
+        project.user_id,
         req.params.project,
         "src",
         img.og_img_key
@@ -758,14 +758,14 @@ router.post("/:user/:project/preview/:img", (req, res, next) => {
 
       const img_name_parts = img.new_uri.split("/");
       const img_name = img_name_parts[img_name_parts.length - 1];
-      const new_img_uri = `./images/users/${req.params.user}/projects/${req.params.project}/preview/${img_name}`;
+      const new_img_uri = `./images/users/${project.user_id}/projects/${req.params.project}/preview/${img_name}`;
 
       const tool = project.tools.filter((t) => t.position == 0)[0];
       const tool_name = tool.procedure;
       const params = tool.params;
 
       const process = {
-        user_id: req.params.user,
+        user_id: project.user_id,
         project_id: req.params.project,
         img_id: img_id,
         msg_id: msg_id,
@@ -830,7 +830,7 @@ router.post(
             contentType: req.file.mimetype,
           });
           const resp = await post_image(
-            req.params.user,
+            project.user_id,
             req.params.project,
             "src",
             data
@@ -840,8 +840,8 @@ router.post(
           const og_key = og_key_tmp[og_key_tmp.length - 1];
 
           try {
-            const og_uri = `./images/users/${req.params.user}/projects/${req.params.project}/src/${req.file.originalname}`;
-            const new_uri = `./images/users/${req.params.user}/projects/${req.params.project}/out/${req.file.originalname}`;
+            const og_uri = `./images/users/${project.user_id}/projects/${req.params.project}/src/${req.file.originalname}`;
+            const new_uri = `./images/users/${project.user_id}/projects/${req.params.project}/out/${req.file.originalname}`;
 
             // Insert new image
             project["imgs"].push({
@@ -850,7 +850,7 @@ router.post(
               og_img_key: og_key,
             });
 
-            Project.update(req.params.user, req.params.project, project)
+            Project.update(project.user_id, req.params.project, project)
               .then((_) => res.sendStatus(204))
               .catch((_) =>
                 res.status(503).jsonp(`Error updating project information`)
@@ -884,8 +884,19 @@ router.post("/:user/:project/tool", (req, res, next) => {
   const shareToken = req.query.share || req.headers['x-share-token'];
   if (shareToken) {
     // If using a share token, require edit permission and skip owner-type check
+    // First try to get by (user, project), if not found try by project_id alone
     Project.getOne(req.params.user, req.params.project)
-      .then((project) => {
+      .then(async (project) => {
+        // If not found for this user but share token exists, try by project id only
+        if (!project) {
+          project = await Project.getById(req.params.project);
+        }
+
+        if (!project) {
+          res.status(404).jsonp('Project not found');
+          return;
+        }
+
         if (!shareAllows(project, shareToken, 'edit')) {
           res.status(403).jsonp('Share token does not allow edit');
           return;
@@ -898,7 +909,8 @@ router.post("/:user/:project/tool", (req, res, next) => {
 
         project['tools'].push(tool);
 
-        Project.update(req.params.user, req.params.project, project)
+        // Update using the actual project owner's user_id, not the share user
+        Project.update(project.user_id, req.params.project, project)
           .then((_) => res.sendStatus(204))
           .catch((_) => res.status(503).jsonp(`Error updating project information`));
       })
@@ -935,15 +947,26 @@ router.post("/:user/:project/tool", (req, res, next) => {
 });
 
 // Reorder tools of a project
-router.post("/:user/:project/reorder", (req, res, next) => {
+router.post("/:user/:project/reorder", async (req, res, next) => {
   // Remove all tools from project and reinsert them according to new order
-  Project.getOne(req.params.user, req.params.project)
-    .then((project) => {
-      const shareToken = req.query.share || req.headers['x-share-token'];
-      if (shareToken && !shareAllows(project, shareToken, 'edit')) {
-        res.status(403).jsonp('Share token does not allow edit');
-        return;
-      }
+  const shareToken = req.query.share || req.headers['x-share-token'];
+  
+  let project = await Project.getOne(req.params.user, req.params.project);
+  if (!project && shareToken) {
+    project = await Project.getById(req.params.project);
+  }
+  
+  if (!project) {
+    res.status(404).jsonp('Project not found');
+    return;
+  }
+  
+  if (shareToken && !shareAllows(project, shareToken, 'edit')) {
+    res.status(403).jsonp('Share token does not allow edit');
+    return;
+  }
+  
+  try {
       project["tools"] = [];
 
       for (let t of req.body) {
@@ -955,35 +978,58 @@ router.post("/:user/:project/reorder", (req, res, next) => {
         project["tools"].push(tool);
       }
 
-      Project.update(req.params.user, req.params.project, project)
+      Project.update(project.user_id, req.params.project, project)
         .then((project) => res.status(204).jsonp(project))
         .catch((_) =>
           res.status(503).jsonp(`Error updating project information`)
         );
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+  } catch (error) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 // Process a specific project
-router.post("/:user/:project/process", (req, res) => {
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (project) => {
-      const shareToken = req.query.share || req.headers["x-share-token"];
-
-      if (shareToken && !shareAllows(project, shareToken, "edit")) {
-        return res.status(403).jsonp("Share token does not allow edit");
-      }
-
+router.post("/:user/:project/process", async (req, res) => {
+  console.log('=== PROCESS ROUTE START ===');
+  console.log('User:', req.params.user, 'Project:', req.params.project);
+  
+  const shareToken = req.query.share || req.headers["x-share-token"];
+  console.log('ShareToken:', shareToken);
+  
+  let project = await Project.getOne(req.params.user, req.params.project);
+  console.log('Project from getOne:', project ? 'FOUND' : 'NOT FOUND');
+  
+  if (!project && shareToken) {
+    console.log('Trying getById with shareToken...');
+    project = await Project.getById(req.params.project);
+    console.log('Project from getById:', project ? 'FOUND' : 'NOT FOUND');
+  }
+  
+  if (!project) {
+    console.log('ERROR: Project not found!');
+    return res.status(404).jsonp("Project not found");
+  }
+  
+  console.log('Project found! user_id:', project.user_id, 'tools count:', project.tools?.length);
+  
+  if (shareToken && !shareAllows(project, shareToken, "edit")) {
+    console.log('ERROR: ShareToken does not allow edit');
+    return res.status(403).jsonp("Share token does not allow edit");
+  }
+  
+  console.log('Permission check passed, starting processing...');
+  
+  try {
       // Delete previous results
       try {
         const prev_results = await Result.getAll(
-          req.params.user,
+          project.user_id,
           req.params.project
         );
 
         for (const r of prev_results) {
           await delete_image(
-            req.params.user,
+            project.user_id,
             req.params.project,
             "out",
             r.img_key
@@ -1019,28 +1065,40 @@ router.post("/:user/:project/process", (req, res) => {
         }
       }
 
-      const source_path = `/../images/users/${req.params.user}/projects/${req.params.project}/src`;
-      const result_path = `/../images/users/${req.params.user}/projects/${req.params.project}/out`;
+      const source_path = `/../images/users/${project.user_id}/projects/${req.params.project}/src`;
+      const result_path = `/../images/users/${project.user_id}/projects/${req.params.project}/out`;
+
+      console.log('Creating directories:', { source_path, result_path, project_user_id: project.user_id });
 
       // Reset folders
-      for (const p of [source_path, result_path]) {
-        const fullPath = path.join(__dirname, p);
-        if (fs.existsSync(fullPath)) {
-          fs.rmSync(fullPath, { recursive: true, force: true });
+      try {
+        for (const p of [source_path, result_path]) {
+          const fullPath = path.join(__dirname, p);
+          console.log('Processing path:', fullPath);
+          if (fs.existsSync(fullPath)) {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+          }
+          fs.mkdirSync(fullPath, { recursive: true });
         }
-        fs.mkdirSync(fullPath, { recursive: true });
+      } catch (e) {
+        console.error('Error creating directories:', e);
+        return res.status(603).jsonp("Error creating directories");
       }
 
       let error = false;
 
+      console.log('Starting to process images. Project user_id:', project.user_id, 'Images count:', project.imgs.length);
+
       for (const img of project.imgs) {
         try {
+          console.log('Processing image:', img._id, 'og_img_key:', img.og_img_key);
           const resp = await get_image_docker(
-            req.params.user,
+            project.user_id,
             req.params.project,
             "src",
             img.og_img_key
           );
+          console.log('Got image URL from MinIO:', resp.data.url);
 
           const imgResp = await axios.get(resp.data.url, {
             responseType: "stream",
@@ -1060,13 +1118,14 @@ router.post("/:user/:project/process", (req, res) => {
           const tool = project.tools.find((t) => t.position === 0);
 
           const process = {
-            user_id: req.params.user,
+            user_id: project.user_id,
             project_id: req.params.project,
             img_id: img._id,
             msg_id,
             cur_pos: 0,
             og_img_uri: img.og_uri,
             new_img_uri: img.new_uri,
+            initiated_by: req.params.user,
           };
 
           await Process.create(process);
@@ -1079,7 +1138,8 @@ router.post("/:user/:project/process", (req, res) => {
             tool.procedure,
             tool.params
           );
-        } catch {
+        } catch (e) {
+          console.error('Error processing image:', e);
           error = true;
         }
       }
@@ -1091,42 +1151,60 @@ router.post("/:user/:project/process", (req, res) => {
       }
 
       res.sendStatus(201);
-    })
-    .catch(() => {
+  } catch (error) {
       res.status(501).jsonp("Error acquiring user's project");
-    });
+  }
 });
 
 
 // Update a specific project
-router.put("/:user/:project", (req, res, next) => {
-  Project.getOne(req.params.user, req.params.project)
-    .then((project) => {
-      const shareToken = req.query.share || req.headers['x-share-token'];
-      if (shareToken && !shareAllows(project, shareToken, 'edit')) {
-        res.status(403).jsonp('Share token does not allow edit');
-        return;
-      }
+router.put("/:user/:project", async (req, res, next) => {
+  const shareToken = req.query.share || req.headers['x-share-token'];
+  
+  let project = await Project.getOne(req.params.user, req.params.project);
+  if (!project && shareToken) {
+    project = await Project.getById(req.params.project);
+  }
+  
+  if (!project) {
+    return res.status(404).jsonp('Project not found');
+  }
+  
+  if (shareToken && !shareAllows(project, shareToken, 'edit')) {
+    return res.status(403).jsonp('Share token does not allow edit');
+  }
+  
+  try {
       project.name = req.body.name || project.name;
-      Project.update(req.params.user, req.params.project, project)
+      Project.update(project.user_id, req.params.project, project)
         .then((_) => res.sendStatus(204))
         .catch((_) =>
           res.status(503).jsonp(`Error updating project information`)
         );
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+  } catch (error) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 // Update a tool from a specific project
-router.put("/:user/:project/tool/:tool", (req, res, next) => {
+router.put("/:user/:project/tool/:tool", async (req, res, next) => {
   // Get project and update required tool with new data, keeping it's original position and procedure
-  Project.getOne(req.params.user, req.params.project)
-    .then((project) => {
-      const shareToken = req.query.share || req.headers['x-share-token'];
-      if (shareToken && !shareAllows(project, shareToken, 'edit')) {
-        res.status(403).jsonp('Share token does not allow edit');
-        return;
-      }
+  const shareToken = req.query.share || req.headers['x-share-token'];
+  
+  let project = await Project.getOne(req.params.user, req.params.project);
+  if (!project && shareToken) {
+    project = await Project.getById(req.params.project);
+  }
+  
+  if (!project) {
+    return res.status(404).jsonp('Project not found');
+  }
+  
+  if (shareToken && !shareAllows(project, shareToken, 'edit')) {
+    return res.status(403).jsonp('Share token does not allow edit');
+  }
+  
+  try {
       try {
         const tool_pos = project["tools"].findIndex(
           (i) => i._id == req.params.tool
@@ -1140,7 +1218,7 @@ router.put("/:user/:project/tool/:tool", (req, res, next) => {
           _id: prev_tool._id,
         };
 
-        Project.update(req.params.user, req.params.project, project)
+        Project.update(project.user_id, req.params.project, project)
           .then((_) => res.sendStatus(204))
           .catch((_) =>
             res.status(503).jsonp(`Error updating project information`)
@@ -1150,8 +1228,9 @@ router.put("/:user/:project/tool/:tool", (req, res, next) => {
           .status(599)
           .jsonp(`Error updating tool. Make sure such tool exists`);
       }
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+  } catch (error) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 // Delete a project
@@ -1166,7 +1245,7 @@ router.delete("/:user/:project", (req, res, next) => {
     const previous_img = JSON.parse(JSON.stringify(project["imgs"]));
     for (let img of previous_img) {
       await delete_image(
-        req.params.user,
+        project.user_id,
         req.params.project,
         "src",
         img.og_img_key
@@ -1174,18 +1253,18 @@ router.delete("/:user/:project", (req, res, next) => {
       project["imgs"].remove(img); // Not really needed, but in case of error serves as reference point
     }
 
-    const results = await Result.getAll(req.params.user, req.params.project);
+    const results = await Result.getAll(project.user_id, req.params.project);
 
-    const previews = await Preview.getAll(req.params.user, req.params.project);
+    const previews = await Preview.getAll(project.user_id, req.params.project);
 
     for (let r of results) {
-      await delete_image(req.params.user, req.params.project, "out", r.img_key);
+      await delete_image(project.user_id, req.params.project, "out", r.img_key);
       await Result.delete(r.user_id, r.project_id, r.img_id);
     }
 
     for (let p of previews) {
       await delete_image(
-        req.params.user,
+        project.user_id,
         req.params.project,
         "preview",
         p.img_key
@@ -1200,20 +1279,29 @@ router.delete("/:user/:project", (req, res, next) => {
 });
 
 // Delete an image from a project
-router.delete("/:user/:project/img/:img", (req, res, next) => {
+router.delete("/:user/:project/img/:img", async (req, res, next) => {
   // Get project and delete specified image
-  Project.getOne(req.params.user, req.params.project)
-    .then(async (project) => {
-      const shareToken = req.query.share || req.headers['x-share-token'];
-      if (shareToken && !shareAllows(project, shareToken, 'edit')) {
-        res.status(403).jsonp('Share token does not allow edit');
-        return;
-      }
+  const shareToken = req.query.share || req.headers['x-share-token'];
+  
+  let project = await Project.getOne(req.params.user, req.params.project);
+  if (!project && shareToken) {
+    project = await Project.getById(req.params.project);
+  }
+  
+  if (!project) {
+    return res.status(404).jsonp('Project not found');
+  }
+  
+  if (shareToken && !shareAllows(project, shareToken, 'edit')) {
+    return res.status(403).jsonp('Share token does not allow edit');
+  }
+  
+  try {
       try {
         const img = project["imgs"].filter((i) => i._id == req.params.img)[0];
 
         await delete_image(
-          req.params.user,
+          project.user_id,
           req.params.project,
           "src",
           img.og_img_key
@@ -1221,20 +1309,20 @@ router.delete("/:user/:project/img/:img", (req, res, next) => {
         project["imgs"].remove(img);
 
         const results = await Result.getOne(
-          req.params.user,
+          project.user_id,
           req.params.project,
           img._id
         );
 
         const previews = await Preview.getOne(
-          req.params.user,
+          project.user_id,
           req.params.project,
           img._id
         );
 
         if (results !== null && results !== undefined) {
           await delete_image(
-            req.params.user,
+            project.user_id,
             req.params.project,
             "out",
             results.img_key
@@ -1248,7 +1336,7 @@ router.delete("/:user/:project/img/:img", (req, res, next) => {
 
         if (previews !== null && previews !== undefined) {
           await delete_image(
-            req.params.user,
+            project.user_id,
             req.params.project,
             "preview",
             previews.img_key
@@ -1260,7 +1348,7 @@ router.delete("/:user/:project/img/:img", (req, res, next) => {
           );
         }
 
-        Project.update(req.params.user, req.params.project, project)
+        Project.update(project.user_id, req.params.project, project)
           .then((_) => res.sendStatus(204))
           .catch((_) =>
             res.status(503).jsonp(`Error updating project information`)
@@ -1268,20 +1356,30 @@ router.delete("/:user/:project/img/:img", (req, res, next) => {
       } catch (_) {
         res.status(400).jsonp(`Error deleting image information.`);
       }
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+  } catch (error) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 // Delete a tool from a project
-router.delete("/:user/:project/tool/:tool", (req, res, next) => {
+router.delete("/:user/:project/tool/:tool", async (req, res, next) => {
   // Get project and delete specified tool, updating the position of all tools that follow
-  Project.getOne(req.params.user, req.params.project)
-    .then((project) => {
-      const shareToken = req.query.share || req.headers['x-share-token'];
-      if (shareToken && !shareAllows(project, shareToken, 'edit')) {
-        res.status(403).jsonp('Share token does not allow edit');
-        return;
-      }
+  const shareToken = req.query.share || req.headers['x-share-token'];
+  
+  let project = await Project.getOne(req.params.user, req.params.project);
+  if (!project && shareToken) {
+    project = await Project.getById(req.params.project);
+  }
+  
+  if (!project) {
+    return res.status(404).jsonp('Project not found');
+  }
+  
+  if (shareToken && !shareAllows(project, shareToken, 'edit')) {
+    return res.status(403).jsonp('Share token does not allow edit');
+  }
+  
+  try {
       try {
         const tool = project["tools"].filter(
           (i) => i._id == req.params.tool
@@ -1294,7 +1392,7 @@ router.delete("/:user/:project/tool/:tool", (req, res, next) => {
             project["tools"][i].position--;
         }
 
-        Project.update(req.params.user, req.params.project, project)
+        Project.update(project.user_id, req.params.project, project)
           .then((_) => res.sendStatus(204))
           .catch((_) =>
             res.status(503).jsonp(`Error updating project information`)
@@ -1302,8 +1400,9 @@ router.delete("/:user/:project/tool/:tool", (req, res, next) => {
       } catch (_) {
         res.status(400).jsonp(`Error deleting tool's information`);
       }
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+  } catch (error) {
+    res.status(501).jsonp(`Error acquiring user's project`);
+  }
 });
 
 module.exports = { router, process_msg };

@@ -19,6 +19,8 @@ export const useGetProject = (uid: string, pid: string, token: string, shareToke
   return useQuery({
     queryKey: ["project", uid, pid, token, shareToken],
     queryFn: () => fetchProject(uid, pid, token, shareToken),
+    refetchOnWindowFocus: shareToken ? false : true,
+    refetchOnReconnect: shareToken ? false : true,
   });
 };
 
@@ -59,5 +61,7 @@ export const useGetProjectResults = (
   return useQuery({
     queryKey: ["projectResults", uid, pid, token, shareToken],
     queryFn: () => fetchProjectResults(uid, pid, token, shareToken),
+    refetchOnWindowFocus: shareToken ? false : true,
+    refetchOnReconnect: shareToken ? false : true,
   });
 };

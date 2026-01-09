@@ -97,7 +97,8 @@ export default function Project({
             if (!isMobile) sidebar.setOpen(true);
             setProcessingProgress(0);
             setProcessingSteps(1);
-            router.push("?mode=results&view=grid");
+            const url = shareToken ? `?mode=results&view=grid&share=${shareToken}` : "?mode=results&view=grid";
+            router.push(url);
           });
         }, 2000);
       }
@@ -128,6 +129,24 @@ export default function Project({
     isMobile,
     projectResults,
   ]);
+
+  // Redirect to dashboard if project not found (404)
+  useEffect(() => {
+    if (project.isError && project.error) {
+      const errorMessage = project.error instanceof Error 
+        ? project.error.message 
+        : String(project.error);
+      
+      if (errorMessage.includes("404")) {
+        toast({
+          title: "Projeto não encontrado",
+          description: "Este projeto não foi encontrado ou você não tem permissão para acessá-lo.",
+          variant: "destructive",
+        });
+        router.replace("/dashboard");
+      }
+    }
+  }, [project.isError, project.error, router, toast]);
 
   if (project.isError)
     return (
@@ -189,6 +208,7 @@ export default function Project({
                           uid: session.user._id,
                           pid: project.data._id,
                           token: session.token,
+                          shareToken,
                         },
                         {
                           onSuccess: () => {
