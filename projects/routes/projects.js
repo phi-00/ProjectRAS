@@ -733,29 +733,33 @@ router.post("/:user/:project/tool", (req, res, next) => {
 });
 
 // Reorder tools of a project
-router.post("/:user/:project/reorder", (req, res, next) => {
-  // Remove all tools from project and reinsert them according to new order
-  Project.getOne(req.params.user, req.params.project)
-    .then((project) => {
-      project["tools"] = [];
+router.put("/:user/:project/reorder", async (req, res) => {
+  try {
+    const tools = req.body;
 
-      for (let t of req.body) {
-        const tool = {
-          position: project["tools"].length,
-          ...t,
-        };
+    // normalizar positions (segurança extra)
+    const normalizedTools = tools.map((tool, index) => ({
+      ...tool,
+      position: index,
+    }));
 
-        project["tools"].push(tool);
-      }
+    console.log(`[projects] Reorder received for ${req.params.user}/${req.params.project}:`,
+      normalizedTools.map(t => ({ _id: t._id, position: t.position, procedure: t.procedure }))
+    );
 
-      Project.update(req.params.user, req.params.project, project)
-        .then((project) => res.status(204).jsonp(project))
-        .catch((_) =>
-          res.status(503).jsonp(`Error updating project information`)
-        );
-    })
-    .catch((_) => res.status(501).jsonp(`Error acquiring user's project`));
+    await Project.update(
+      req.params.user,
+      req.params.project,
+      { tools: normalizedTools }
+    );
+
+    res.sendStatus(204);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json("Error reordering tools");
+  }
 });
+
 
 // Process a specific project
 router.post("/:user/:project/process", (req, res, next) => {
@@ -851,7 +855,11 @@ router.post("/:user/:project/process", (req, res, next) => {
 
             const og_img_uri = img.og_uri;
             const new_img_uri = img.new_uri;
-            const tool = project.tools.filter((t) => t.position === 0)[0];
+            const tool = project.tools.find(t => t.position === 0);
+
+            if (!tool) {
+              return res.status(400).jsonp("No tool found at position 0");
+            }
 
             const tool_name = tool.procedure;
             const params = tool.params;

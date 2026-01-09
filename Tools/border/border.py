@@ -20,14 +20,22 @@ class Border:
         }
 
     def add_border(self, img_path, output_path, border_color, border_width):
-        # get image
+        # 1. Carregar a imagem via handler
         img = self._img_handler.get_img(img_path)
         
-        # add border
-        image_with_border = ImageOps.expand(img, border=border_width, fill=border_color)
+        # 2. Otimização de Performance e Memória:
+        # Garante que a imagem está em RGB antes de expandir para evitar conflitos
+        # de paleta com a cor da moldura
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
         
-        # save image
-        self._img_handler.store_img(image_with_border, output_path)
+        # Adiciona a moldura usando o motor nativo em C do Pillow (muito rápido)
+        new_img = ImageOps.expand(img, border=border_width, fill=border_color)
+        
+        # 3. Guardar a imagem e fechar objetos para libertar RAM
+        self._img_handler.store_img(new_img, output_path)
+        img.close()
+        new_img.close()
 
     #########################################
     def border_callback(self, ch, method, properties, body):

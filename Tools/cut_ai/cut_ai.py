@@ -134,23 +134,35 @@ class CutAI:
         return x, y, w, h
 
     def cut_ai(self, img_path, store_img_path):
-        
-        # load as PIL image
+        # 1. Carregar como imagem PIL
         pil_img = self._img_handler.get_img(img_path)
         
-        # Get saliency map
+        # Garantir que a imagem está em RGB para o modelo
+        if pil_img.mode != 'RGB':
+            pil_img = pil_img.convert('RGB')
+        
+        # 2. Obter mapa de saliência
         saliency_map = self.get_saliency_map(pil_img)
         
-        # Convert PIL to numpy for cropping
+        # 3. Converter para numpy apenas o necessário para o OpenCV
+        # Otimização: Usar uint8 imediatamente para poupar memória
         img_array = np.array(pil_img)
         
-        # Find crop coordinates
+        # 4. Encontrar coordenadas de recorte
         x, y, w, h = self.find_optimal_crop(img_array, saliency_map)
         
-        # Crop the PIL image
+        # 5. Recortar a imagem PIL original
+        # O Pillow.crop é mais eficiente que o slicing de arrays para imagens grandes
         cropped_pil_img = pil_img.crop((x, y, x+w, y+h))
         
+        # 6. Guardar e libertar recursos (Crítico para T-03)
         self._img_handler.store_img(cropped_pil_img, store_img_path)
+        
+        # Limpeza explícita de memória
+        pil_img.close()
+        cropped_pil_img.close()
+        del img_array
+        del saliency_map
 
     def cut_ai_callback(self, ch, method, properties, body):
         json_str = body.decode()

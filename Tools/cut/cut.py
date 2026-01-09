@@ -28,17 +28,22 @@ class Cut:
     
     def cut_image(self, img_path, store_img_path, dimensions):
         # load image
-        img = self._img_handler.get_img(img_path)
+        img = self._img_handler.load_image(img_path)
         
-        # Validate dimensions
-        # left, top, right, bottom = map(float, dimensions) 
-        # dimensions = (round(left), round(top), round(right), round(bottom))
+        # Desempacotar as dimensões
+        left, top, right, bottom = dimensions
         
-        # cut image
-        new_img = img.crop(dimensions)
+        # Obter a largura e altura da imagem original
+        width, height = img.size
         
-        # store image
-        self._img_handler.store_img(new_img, store_img_path)
+        # Calcular as coordenadas de corte
+        crop_box = (left, top, width - right, height - bottom)
+        
+        # Cortar a imagem
+        cropped_img = img.crop(crop_box)
+        
+        # Salvar a imagem cortada
+        self._img_handler.save_image(cropped_img, store_img_path)
             
     def cut_callback(self, ch, method, properties, body):
         json_str = body.decode()

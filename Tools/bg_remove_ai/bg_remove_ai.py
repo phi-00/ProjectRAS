@@ -1,13 +1,13 @@
+from rembg import remove, new_session
 import sys
 import json
 import datetime
 import pytz
-
-from rembg import remove
-import utils.env as env
+from PIL import Image
 
 from utils.img_handler import Img_Handler
 from utils.tool_msg import ToolMSG
+import utils.env as env
 
 class Background_Remove_AI:
     def __init__(self):
@@ -23,11 +23,24 @@ class Background_Remove_AI:
             'wrong_procedure': 1100,
             'error_processing': 1101
         }
+        # Otimização: Iniciar a sessão do modelo uma única vez no arranque
+        # Isso evita que o modelo seja recarregado em cada imagem
+        self.session = new_session()
 
     def background_remove(self, image_path, store_image_path):
-        image = self._img_handler.get_img(image_path)
-        new_image = remove(image)
+        # 1. Carregar imagem
+        img = self._img_handler.get_img(image_path)
+        
+        # 2. Remover fundo usando a sessão persistente
+        # O rembg funciona melhor se forçado a processar em formato RGBA
+        new_image = remove(img, session=self.session)
+        
+        # 3. Guardar resultado
         self._img_handler.store_img(new_image, store_image_path)
+        
+        # 4. Limpeza de Memória: Crítico para não crashar o contentor Docker
+        img.close()
+        new_image.close()
 
     def background_remove_callback(self, ch, method, properties, body):
         json_str = body.decode()
