@@ -29,6 +29,8 @@ const projectSchema = new mongoose.Schema({
     ],
     default: [],
   },
+  shareToken: { type: String, default: null },
+  shareEnabled: { type: Boolean, default: true },
 });
 
 module.exports = mongoose.model("project", projectSchema);

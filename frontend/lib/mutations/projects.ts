@@ -11,6 +11,7 @@ import {
   downloadProjectImage,
   downloadProjectResults,
   processProject,
+  cancelProcessing,
   updateProject,
   updateProjectTool,
   previewProjectImage,
@@ -122,10 +123,7 @@ export const useDownloadProjectImage = (edited?: boolean) => {
     mutationFn: downloadProjectImage,
     onSuccess: async (image) => {
       const blobUrl = await createBlobUrlFromFile(image.file);
-      downloadBlob(
-        edited ? image.name.split(".")[0] + "_edited" : image.name,
-        blobUrl,
-      );
+      downloadBlob(image.file.name, blobUrl);
     },
   });
 };
@@ -135,7 +133,7 @@ export const useDownloadProject = () => {
     mutationFn: downloadProjectImages,
     onSuccess: async (project) => {
       const blobUrl = await createBlobUrlFromFile(project.file);
-      downloadBlob(project.name, blobUrl);
+      downloadBlob(project.file.name, blobUrl);
     },
   });
 };
@@ -143,9 +141,9 @@ export const useDownloadProject = () => {
 export const useDownloadProjectResults = () => {
   return useMutation({
     mutationFn: downloadProjectResults,
-    onSuccess: async (project) => {
+    onSuccess: async (project, variables) => {
       const blobUrl = await createBlobUrlFromFile(project.file);
-      downloadBlob(project.name + "_edited", blobUrl);
+      downloadBlob(project.file.name, blobUrl);
     },
   });
 };
@@ -157,6 +155,17 @@ export const useProcessProject = () => {
 };
 
 export const useAddProjectTool = (uid: string, pid: string, token: string, shareToken?: string) => {
+export const useCancelProcessing = (
+  uid: string,
+  pid: string,
+  token: string,
+) => {
+  return useMutation({
+    mutationFn: cancelProcessing,
+  });
+};
+
+export const useAddProjectTool = (uid: string, pid: string, token: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: addProjectTool,

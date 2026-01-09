@@ -9,6 +9,12 @@ module.exports.checkToken = (req, res, next) => {
     return;
   }
 
+  
+  if (!authHeader) {
+    res.status(401).jsonp(`Please provide a JWT token`);
+    return;
+  }
+  
   const token = authHeader.split(" ")[1];
 
   if (token === null || token === undefined) {

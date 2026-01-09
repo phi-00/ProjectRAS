@@ -9,6 +9,9 @@ var processSchema = new mongoose.Schema({
   og_img_uri: { type: String, required: true },
   new_img_uri: { type: String, required: true },
   initiated_by: { type: mongoose.Schema.Types.ObjectId, required: false },
+  status: { type: String, enum: ["processing", "completed", "cancelled", "error"], default: "processing" },
+  start_time: { type: Date, default: Date.now },
+  cancelled_time: { type: Date },
 });
 
 module.exports = mongoose.model("process", processSchema);

@@ -5,6 +5,7 @@ import {
   getProjectImages,
   ProjectImage,
   fetchProjectResults,
+  fetchActiveProcesses,
 } from "../projects";
 import { io } from "socket.io-client";
 
@@ -63,5 +64,17 @@ export const useGetProjectResults = (
     queryFn: () => fetchProjectResults(uid, pid, token, shareToken),
     refetchOnWindowFocus: shareToken ? false : true,
     refetchOnReconnect: shareToken ? false : true,
+  });
+};
+
+export const useGetActiveProcesses = (
+  uid: string,
+  pid: string,
+  token: string,
+) => {
+  return useQuery({
+    queryKey: ["activeProcesses", uid, pid, token],
+    queryFn: () => fetchActiveProcesses(uid, pid, token),
+    refetchInterval: 2000, // Refetch every 2 seconds
   });
 };
