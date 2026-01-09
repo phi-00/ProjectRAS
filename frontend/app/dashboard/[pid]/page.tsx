@@ -4,6 +4,7 @@ import { Download, LoaderCircle, OctagonAlert, Play, X } from "lucide-react";
 import { ProjectImageList } from "@/components/project-page/project-image-list";
 import { ViewToggle } from "@/components/project-page/view-toggle";
 import { AddImagesDialog } from "@/components/project-page/add-images-dialog";
+import ShareDialog from "@/components/share-dialog";
 import { Button } from "@/components/ui/button";
 import { Toolbar } from "@/components/toolbar/toolbar";
 import {
@@ -42,9 +43,13 @@ export default function Project({
   params: Promise<{ pid: string }>;
 }) {
   const resolvedParams = use(params);
+  const searchParams = useSearchParams();
+  const shareToken = searchParams.get("share") ?? undefined;
+  const view = searchParams.get("view") ?? "grid";
+  const mode = searchParams.get("mode") ?? "edit";
   const session = useSession();
   const { pid } = resolvedParams;
-  const project = useGetProject(session.user._id, pid, session.token);
+  const project = useGetProject(session.user._id, pid, session.token, shareToken);
   const downloadProjectImages = useDownloadProject();
   const processProject = useProcessProject();
   const cancelProcessing = useCancelProcessing(session.user._id, pid, session.token);
@@ -84,6 +89,7 @@ export default function Project({
     session.user._id,
     pid,
     session.token,
+    shareToken,
   );
   const qc = useQueryClient();
 
@@ -116,7 +122,8 @@ export default function Project({
             if (!isMobile) sidebar.setOpen(true);
             setProcessingProgress(0);
             setProcessingSteps(1);
-            router.push("?mode=results&view=grid");
+            const url = shareToken ? `?mode=results&view=grid&share=${shareToken}` : "?mode=results&view=grid";
+            router.push(url);
           });
         }, 2000);
       }
@@ -153,6 +160,24 @@ export default function Project({
     isMobile,
     projectResults,
   ]);
+
+  // Redirect to dashboard if project not found (404)
+  useEffect(() => {
+    if (project.isError && project.error) {
+      const errorMessage = project.error instanceof Error 
+        ? project.error.message 
+        : String(project.error);
+      
+      if (errorMessage.includes("404")) {
+        toast({
+          title: "Projeto não encontrado",
+          description: "Este projeto não foi encontrado ou você não tem permissão para acessá-lo.",
+          variant: "destructive",
+        });
+        router.replace("/dashboard");
+      }
+    }
+  }, [project.isError, project.error, router, toast]);
 
   if (project.isError)
     return (
@@ -258,6 +283,7 @@ export default function Project({
                           uid: session.user._id,
                           pid: project.data._id,
                           token: session.token,
+                          shareToken,
                         },
                         {
                           onSuccess: () => {
@@ -278,8 +304,30 @@ export default function Project({
                     <Play /> Apply
                   </Button>
                   <AddImagesDialog />
+                  <ShareDialog />
                 </>
               )}
+              <Button
+                variant="outline"
+                className="px-3"
+                title="Download project"
+                onClick={() => {
+                  (mode === "edit"
+                    ? downloadProjectImages
+                    : downloadProjectResults
+                  ).mutate(
+                    {
+                      uid: session.user._id,
+                      pid: project.data._id,
+                      token: session.token,
+                      projectName: project.data.name,
+                      ...(shareToken ? { shareToken } : {}),
+                    },
+                    {
+                      onSuccess: () => {
+                        toast({
+                          title: `Project ${project.data.name} downloaded.`,
+                        });
               {mode === "edit" ? (
                 <Button
                   variant="outline"

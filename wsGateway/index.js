@@ -63,7 +63,6 @@ function process_msg() {
             console.log('[wsGateway] Emitting preview-ready to user:', user);
             io.to(user).emit("preview-ready", img_url);
         }
-
         else if (/update-client-process/.test(msg_id)) {
             if (status == "error") {
                 const error_code = msg_content.errorCode;
@@ -78,7 +77,14 @@ function process_msg() {
             console.log('[wsGateway] Emitting process-update to user:', user, 'msg_id:', msg_id);
             io.to(user).emit("process-update", msg_id);
         }
+            // share created/deleted events
+            if (msg_content.messageId.indexOf("share-created-") === 0) {
+                io.to(user).emit("share-created", msg_content.data || {});
+            }
 
+            if (msg_content.messageId.indexOf("share-deleted-") === 0) {
+                io.to(user).emit("share-deleted", msg_content.data || {});
+            }
     })
 }
 

@@ -8,6 +8,10 @@ module.exports.getOne = async (user_id, project_id) => {
   return await Project.findOne({ user_id: user_id, _id: project_id }).exec();
 };
 
+module.exports.getById = async (project_id) => {
+  return await Project.findOne({ _id: project_id }).exec();
+};
+
 module.exports.create = async (project) => {
   const crypto = require('crypto');
   const shareToken = crypto.randomBytes(32).toString('hex');
@@ -17,7 +21,7 @@ module.exports.create = async (project) => {
 };
 
 module.exports.update = (user_id, project_id, project) => {
-  return Project.updateOne({ user_id: user_id, _id: project_id }, project);
+  return Project.updateOne({ user_id: user_id, _id: project_id }, { $set: project });
 };
 
 module.exports.delete = (user_id, project_id) => {

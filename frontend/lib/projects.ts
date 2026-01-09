@@ -70,23 +70,32 @@ export const fetchProjects = async (uid: string, token: string) => {
   })) as Project[];
 };
 
-export const fetchProject = async (uid: string, pid: string, token: string) => {
-  const response = await api.get<SingleProject>(`/projects/${uid}/${pid}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
+export const fetchProject = async (uid: string, pid: string, token: string, shareToken?: string) => {
+  try {
+    const response = await api.get<SingleProject>(`/projects/${uid}/${pid}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
+      },
+      params: shareToken ? { share: shareToken } : undefined,
+    });
 
-  if (response.status !== 200 || !response.data)
-    throw new Error("Failed to fetch project");
+    if (response.status !== 200 || !response.data)
+      throw new Error("Failed to fetch project");
 
-  return {
-    _id: response.data._id,
-    user_id: response.data.user_id,
-    name: response.data.name,
-    imgs: response.data.imgs,
-    tools: response.data.tools,
-  } as SingleProject;
+    return {
+      _id: response.data._id,
+      user_id: response.data.user_id,
+      name: response.data.name,
+      imgs: response.data.imgs,
+      tools: response.data.tools,
+    } as SingleProject;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      throw new Error("Project not found (404)");
+    }
+    throw new Error(error.message || "Failed to fetch project");
+  }
 };
 
 export const addProject = async ({
@@ -175,13 +184,16 @@ export const getProjectImages = async (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const response = await api.get<ProjectImage[]>(
     `/projects/${uid}/${pid}/imgs`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
       },
+      params: shareToken ? { share: shareToken } : undefined,
     },
   );
 
@@ -272,12 +284,14 @@ export const downloadProjectImages = async ({
   uid,
   pid,
   token,
+  shareToken,
 }: {
   uid: string;
   pid: string;
   token: string;
+  shareToken?: string;
 }) => {
-  const project = await fetchProject(uid, pid, token);
+  const project = await fetchProject(uid, pid, token, shareToken);
   const zip = new JSZip();
 
   for (const image of project.imgs) {
@@ -476,12 +490,14 @@ export const downloadProjectResults = async ({
   pid,
   projectName,
   token,
+  shareToken,
   format = "png",
 }: {
   uid: string;
   pid: string;
   projectName: string;
   token: string;
+  shareToken?: string;
   format?: "png" | "jpeg" | "bmp" | "tiff";
 }) => {
   // Get MIME type and extension for each format
@@ -499,8 +515,10 @@ export const downloadProjectResults = async ({
     {
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
       },
       responseType: "arraybuffer",
+      params: shareToken ? { share: shareToken } : undefined,
     },
   );
 
@@ -536,64 +554,76 @@ export const fetchProjectResults = async (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
-  const response = await api.get<{
-    imgs: {
-      og_img_id: string;
-      name: string;
-      url: string;
-    }[];
-    texts: {
-      og_img_id: string;
-      name: string;
-      url: string;
-    }[];
-  }>(`/projects/${uid}/${pid}/process/url`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (response.status !== 200 || !response.data)
-    throw new Error("Failed to fetch project results");
-
-  const texts: ProjectImageText[] = [];
-  for (const text of response.data.texts) {
-    const response = await axios.get<string>(text.url, {
-      responseType: "text",
+  try {
+    const response = await api.get<{
+      imgs: {
+        og_img_id: string;
+        name: string;
+        url: string;
+      }[];
+      texts: {
+        og_img_id: string;
+        name: string;
+        url: string;
+      }[];
+    }>(`/projects/${uid}/${pid}/process/url`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
+      },
+      params: shareToken ? { share: shareToken } : undefined,
     });
 
     if (response.status !== 200 || !response.data)
-      throw new Error("Failed to fetch text");
+      throw new Error("Failed to fetch project results");
 
-    texts.push({
-      _id: text.og_img_id,
-      name: text.name,
-      text: response.data,
-    });
+    const texts: ProjectImageText[] = [];
+    for (const text of response.data.texts) {
+      const response = await axios.get<string>(text.url, {
+        responseType: "text",
+      });
+
+      if (response.status !== 200 || !response.data)
+        throw new Error("Failed to fetch text");
+
+      texts.push({
+        _id: text.og_img_id,
+        name: text.name,
+        text: response.data,
+      });
+    }
+
+    return {
+      imgs: response.data.imgs.map(
+        (img) =>
+          ({
+            _id: img.og_img_id,
+            name: img.name,
+            url: img.url,
+          }) as ProjectImage,
+      ),
+      texts: texts,
+    };
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      throw new Error("Project results not found (404)");
+    }
+    throw new Error(error.message || "Failed to fetch project results");
   }
-
-  return {
-    imgs: response.data.imgs.map(
-      (img) =>
-        ({
-          _id: img.og_img_id,
-          name: img.name,
-          url: img.url,
-        }) as ProjectImage,
-    ),
-    texts: texts,
-  };
 };
 
 export const processProject = async ({
   uid,
   pid,
   token,
+  shareToken,
 }: {
   uid: string;
   pid: string;
   token: string;
+  shareToken?: string;
 }) => {
   const response = await api.post<string>(
     `/projects/${uid}/${pid}/process`,
@@ -601,7 +631,9 @@ export const processProject = async ({
     {
       headers: {
         Authorization: `Bearer ${token}`,
+        ...(shareToken ? { "x-share-token": shareToken } : {}),
       },
+      params: shareToken ? { share: shareToken } : undefined,
     },
   );
 
@@ -609,6 +641,25 @@ export const processProject = async ({
     throw new Error("Failed to request project processing");
 };
 
+// Share management
+export const createShare = async ({
+  uid,
+  pid,
+  token,
+  permission,
+  expiresInDays,
+  created_by,
+}: {
+  uid: string;
+  pid: string;
+  token: string;
+  permission: "view" | "edit";
+  expiresInDays?: number;
+  created_by?: string;
+}) => {
+  const response = await api.post<{ token: string }>(
+    `/projects/${uid}/${pid}/share`,
+    { permission, expiresInDays, created_by },
 export const cancelProcessing = async ({
   uid,
   pid,
@@ -629,6 +680,25 @@ export const cancelProcessing = async ({
     },
   );
 
+  if (response.status !== 201 || !response.data) throw new Error("Failed to create share");
+  return response.data.token;
+};
+
+export const listShares = async ({ uid, pid, token }: { uid: string; pid: string; token: string }) => {
+  const response = await api.get<any>(`/projects/${uid}/${pid}/shares`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (response.status !== 200 || !response.data) throw new Error("Failed to list shares");
+  return response.data;
+};
+
+export const deleteShare = async ({ uid, pid, token, shareToken }: { uid: string; pid: string; token: string; shareToken: string }) => {
+  const response = await api.delete(`/projects/${uid}/${pid}/share/${shareToken}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (response.status !== 204) throw new Error("Failed to delete share");
   if (response.status !== 204)
     throw new Error("Failed to cancel project processing");
 };

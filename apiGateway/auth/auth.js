@@ -2,6 +2,13 @@ const jwt = require("jsonwebtoken");
 
 module.exports.checkToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
+
+  // Gracefully handle missing/invalid header to avoid 500
+  if (!authHeader || typeof authHeader !== "string" || !authHeader.includes(" ")) {
+    res.status(401).jsonp(`Please provide a JWT token`);
+    return;
+  }
+
   
   if (!authHeader) {
     res.status(401).jsonp(`Please provide a JWT token`);

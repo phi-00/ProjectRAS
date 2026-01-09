@@ -1,6 +1,6 @@
 import { LoaderCircle, Sparkle, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "@/providers/session-provider";
 import {
   DropdownMenu,
@@ -54,6 +54,8 @@ export function ToolbarButton({
   onDefault = () => {},
 }: ToolbarButtonProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const shareToken = searchParams.get("share") ?? undefined;
   const session = useSession();
   const project = useProjectInfo();
   const preview = usePreview();
@@ -68,16 +70,19 @@ export function ToolbarButton({
     session.user._id,
     project._id,
     session.token,
+    shareToken,
   );
   const updateTool = useUpdateProjectTool(
     session.user._id,
     project._id,
     session.token,
+    shareToken,
   );
   const deleteTool = useDeleteProjectTool(
     session.user._id,
     project._id,
     session.token,
+    shareToken,
   );
   const previewEdits = usePreviewProjectResult();
 

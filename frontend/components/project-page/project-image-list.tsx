@@ -41,6 +41,7 @@ export function ProjectImageList({
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "grid";
   const mode = searchParams.get("mode") ?? "edit";
+  const share = searchParams.get("share");
 
   const [api, setApi] = useState<CarouselApi>();
   const [current, setCurrent] = useState(0);
@@ -165,7 +166,10 @@ export function ProjectImageList({
                         className="aspect-square"
                         onClick={() => {
                           setJumpTo(index);
-                          router.push(`?mode=${mode}&view=carousel`);
+                          const url = share 
+                            ? `?mode=${mode}&view=carousel&share=${share}` 
+                            : `?mode=${mode}&view=carousel`;
+                          router.push(url);
                           qc.invalidateQueries({
                             queryKey: ["socket"],
                             refetchType: "all",
@@ -187,7 +191,10 @@ export function ProjectImageList({
                               ? results.imgs.length
                               : project.imgs.length) + index,
                           );
-                          router.push(`?mode=${mode}&view=carousel`);
+                          const url = share 
+                            ? `?mode=${mode}&view=carousel&share=${share}` 
+                            : `?mode=${mode}&view=carousel`;
+                          router.push(url);
                           qc.invalidateQueries({
                             queryKey: ["socket"],
                             refetchType: "all",
