@@ -169,7 +169,7 @@ function process_msg() {
 
       console.log('[process_msg] Received message:', msg_id);
 
-      const process = await Process.getOne(msg_id);
+      const process = await Process.getByMsgId(msg_id);
 
       // Check if process was cancelled
       if (process && process.status === "cancelled") {
@@ -368,14 +368,22 @@ function process_msg() {
         tool_name,
         params
       );
-    } catch (_) {
-      send_msg_client_error(
-        user_msg_id,
-        timestamp,
-        process.user_id,
-        "30000",
-        "An error happened while processing the project"
-      );
+    } catch (err) {
+      console.error('[process_msg] Error processing message:', err);
+      // Use local variables in case the error happened before they were defined
+      const errorMsgId = `update-client-process-${uuidv4()}`;
+      const errorTimestamp = new Date().toISOString();
+      const errorUserId = process?.user_id || 'unknown';
+      
+      if (errorUserId !== 'unknown') {
+        send_msg_client_error(
+          errorMsgId,
+          errorTimestamp,
+          errorUserId,
+          "30000",
+          "An error happened while processing the project"
+        );
+      }
       return;
     }
   });

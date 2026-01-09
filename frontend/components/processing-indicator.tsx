@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Transition } from "@headlessui/react";
 import { useProcessTimer } from "@/hooks/use-process-timer";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface ProcessingIndicatorProps {
   processing: boolean;
@@ -24,15 +24,7 @@ export function ProcessingIndicator({
   const [isCancelling, setIsCancelling] = useState(false);
   const { showCancel, formattedTime } = useProcessTimer(processing);
 
-  // Debug logging
-  useEffect(() => {
-    if (processing) {
-      console.log('[ProcessingIndicator] Processing started, showing indicator');
-    }
-  }, [processing]);
-
   const handleCancel = async () => {
-    console.log('[ProcessingIndicator] Cancel button clicked');
     setIsCancelling(true);
     try {
       await onCancel();

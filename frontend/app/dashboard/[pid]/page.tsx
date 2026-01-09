@@ -86,11 +86,6 @@ export default function Project({
     }
   }, [activeProcesses.data, processing]);
 
-  // Debug processing state
-  useEffect(() => {
-    console.log('[Dashboard] Processing state:', processing);
-  }, [processing]);
-
   useLayoutEffect(() => {
     if (
       !["edit", "results"].includes(mode) ||
@@ -102,7 +97,6 @@ export default function Project({
 
   useEffect(() => {
     function onProcessUpdate() {
-      console.log('[Dashboard] Process update received');
       setProcessing(true); // Ensure processing is set to true when updates arrive
       setProcessingSteps((prev) => prev + 1);
 
@@ -111,7 +105,6 @@ export default function Project({
         100,
       );
 
-      console.log('[Dashboard] Progress:', progress, 'Steps:', processingSteps, 'Total:', totalProcessingSteps);
       setProcessingProgress(progress);
       if (processingSteps >= totalProcessingSteps) {
         setTimeout(() => {
@@ -130,14 +123,12 @@ export default function Project({
     let active = true;
 
     if (active && socket.data) {
-      console.log('[Dashboard] Socket connected, listening for process-update');
       socket.data.on("process-update", () => {
-        console.log('[Dashboard] process-update event received');
         if (active) onProcessUpdate();
       });
 
       socket.data.on("process-error", (error) => {
-        console.log('[Dashboard] process-error received:', error);
+        // Error handled by UI
       });
     }
 

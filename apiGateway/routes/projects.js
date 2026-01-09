@@ -497,6 +497,26 @@ router.put(
 );
 
 /**
+ * Cancel a specific process
+ * @body Empty
+ * @returns Empty
+ */
+router.delete(
+  "/:user/:project/process/:process_id",
+  auth.checkToken,
+  function (req, res, next) {
+    axios
+      .delete(
+        projectsURL +
+          `${req.params.user}/${req.params.project}/process/${req.params.process_id}`,
+        { httpsAgent: httpsAgent }
+      )
+      .then((_) => res.sendStatus(204))
+      .catch((err) => relayError(res, err, "Error cancelling process"));
+  }
+);
+
+/**
  * Delete a user's project
  * @body Empty
  * @returns Empty
