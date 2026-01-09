@@ -23,7 +23,7 @@ class Rabbit_MQ:
         )
 
     def send_rabbit_msg(self, msg, queue):
-        self._channel.queue_declare(queue=self._queue, durable=True)
+        self._channel.queue_declare(queue=queue, durable=True)
 
         self._channel.basic_publish(exchange="picturas", routing_key=queue, body=msg)
 

@@ -17,6 +17,20 @@ const projectSchema = new mongoose.Schema({
   user_id: { type: mongoose.Schema.Types.ObjectId, required: true }, // Maybe mudar para falso por causa de users anónimos, ou procurar alguma solução
   imgs: { type: [imgSchema], default: [] },
   tools: { type: [toolSchema], default: [] },
+  shares: {
+    type: [
+      new mongoose.Schema({
+        token: { type: String, required: true },
+        permission: { type: String, enum: ["view", "edit"], required: true },
+        created_by: { type: mongoose.Schema.Types.ObjectId, required: false },
+        created_at: { type: Date, default: Date.now },
+        expires_at: { type: Date, required: false },
+      })
+    ],
+    default: [],
+  },
+  shareToken: { type: String, default: null },
+  shareEnabled: { type: Boolean, default: true },
 });
 
 module.exports = mongoose.model("project", projectSchema);

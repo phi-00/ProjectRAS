@@ -11,6 +11,19 @@ const FormData = require("form-data");
 
 const auth = require("../auth/auth");
 
+// Normalize axios errors so we don't mask upstream status codes
+function relayError(res, err, fallbackMsg) {
+  const status = err?.response?.status || 500;
+  const payload = err?.response?.data || fallbackMsg;
+  res.status(status).jsonp(payload);
+}
+
+// Allow share-token access to bypass JWT check; otherwise enforce auth
+function optionalAuth(req, res, next) {
+  if (req.query.share || req.headers["x-share-token"]) return next();
+  return auth.checkToken(req, res, next);
+}
+
 const key = fs.readFileSync(__dirname + "/../certs/selfsigned.key");
 const cert = fs.readFileSync(__dirname + "/../certs/selfsigned.crt");
 
@@ -71,9 +84,13 @@ Post answer structure in case of success
  * @body Empty
  * @returns List of projects, each project has no information about it's images or tools
  */
-router.get("/:user", auth.checkToken, function (req, res, next) {
+router.get("/:user", optionalAuth, function (req, res, next) {
   axios
-    .get(projectsURL + `${req.params.user}`, { httpsAgent: httpsAgent })
+    .get(projectsURL + `${req.params.user}`, {
+      httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+    })
     .then((resp) => res.status(200).jsonp(resp.data))
     .catch((err) => res.status(500).jsonp("Error getting users"));
 });
@@ -83,13 +100,15 @@ router.get("/:user", auth.checkToken, function (req, res, next) {
  * @body Empty
  * @returns The required project
  */
-router.get("/:user/:project", auth.checkToken, function (req, res, next) {
+router.get("/:user/:project", optionalAuth, function (req, res, next) {
   axios
     .get(projectsURL + `${req.params.user}/${req.params.project}`, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
     })
     .then((resp) => res.status(200).jsonp(resp.data))
-    .catch((err) => res.status(500).jsonp("Error getting project"));
+    .catch((err) => relayError(res, err, "Error getting project"));
 });
 
 /**
@@ -99,7 +118,7 @@ router.get("/:user/:project", auth.checkToken, function (req, res, next) {
  */
 router.get(
   "/:user/:project/img/:img",
-  auth.checkToken,
+  optionalAuth,
   function (req, res, next) {
     axios
       .get(
@@ -107,6 +126,8 @@ router.get(
           `${req.params.user}/${req.params.project}/img/${req.params.img}`,
         {
           httpsAgent: httpsAgent,
+          params: req.query,
+          headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
         }
       )
       .then((resp) => {
@@ -121,10 +142,12 @@ router.get(
  * @body Empty
  * @returns The project's images
  */
-router.get("/:user/:project/imgs", auth.checkToken, function (req, res, next) {
+router.get("/:user/:project/imgs", optionalAuth, function (req, res, next) {
   axios
     .get(projectsURL + `${req.params.user}/${req.params.project}/imgs`, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
     })
     .then((resp) => {
       res.status(200).send(resp.data);
@@ -133,18 +156,55 @@ router.get("/:user/:project/imgs", auth.checkToken, function (req, res, next) {
 });
 
 /**
+ * Download and convert a single image
+ * @query format - The target format (png, jpeg, bmp, tiff)
+ * @returns The converted image
+ */
+router.get(
+  "/:user/:project/img/:img/download",
+  auth.checkToken,
+  function (req, res, next) {
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = projectsURL + `${req.params.user}/${req.params.project}/img/${req.params.img}/download${queryString ? '?' + queryString : ''}`;
+    console.log(`[GET /img/download] Forwarding to: ${url}`);
+    
+    axios
+      .get(url, {
+        httpsAgent: httpsAgent,
+        responseType: "arraybuffer",
+      })
+      .then((resp) => {
+        res.set("Content-Type", resp.headers["content-type"]);
+        res.set("Content-Disposition", resp.headers["content-disposition"]);
+        res.status(200).send(resp.data);
+      })
+      .catch((err) => {
+        console.error("[GET /img/download] Error:", err.message);
+        res.status(500).jsonp("Error downloading image");
+      });
+  }
+);
+
+/**
  * Get project's processment result
  * @body Empty
  * @returns The required results, sent as a zip
  */
 router.get(
   "/:user/:project/process",
-  auth.checkToken,
+  optionalAuth,
   function (req, res, next) {
+    // Build URL with query parameters (for format selection)
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = projectsURL + `${req.params.user}/${req.params.project}/process${queryString ? '?' + queryString : ''}`;
+    console.log(`[GET /process] Forwarding to: ${url}`);
+    
     axios
-      .get(projectsURL + `${req.params.user}/${req.params.project}/process`, {
+      .get(url, {
         httpsAgent: httpsAgent,
         responseType: "arraybuffer",
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
       })
       .then((resp) => res.status(200).send(resp.data))
       .catch((err) =>
@@ -160,13 +220,15 @@ router.get(
  */
 router.get(
   "/:user/:project/process/url",
-  auth.checkToken,
+  optionalAuth,
   function (req, res, next) {
     axios
       .get(
         projectsURL + `${req.params.user}/${req.params.project}/process/url`,
         {
           httpsAgent: httpsAgent,
+          params: req.query,
+          headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
         }
       )
       .then((resp) => {
@@ -179,6 +241,33 @@ router.get(
 );
 
 /**
+ * Get project's active processes
+ * @body Empty
+ * @returns List of active processes for the project
+ */
+router.get(
+  "/:user/:project/processes",
+  auth.checkToken,
+  function (req, res, next) {
+    const url = projectsURL + `${req.params.user}/${req.params.project}/processes`;
+    console.log("[GET /processes] Gateway forwarding to:", url);
+    axios
+      .get(url, {
+        httpsAgent: httpsAgent,
+      })
+      .then((resp) => {
+        console.log("[GET /processes] Gateway received response:", resp.status);
+        res.status(200).jsonp(resp.data);
+      })
+      .catch((err) => {
+        console.error("[GET /processes] Gateway error:", err.message);
+        console.error("[GET /processes] Error details:", err.response?.status, err.response?.data);
+        res.status(500).jsonp("Error getting active processes");
+      });
+  }
+);
+
+/**
  * Create new user's project
  * @body { "name": String }
  * @returns Created project's data
@@ -187,6 +276,8 @@ router.post("/:user", auth.checkToken, function (req, res, next) {
   axios
     .post(projectsURL + `${req.params.user}`, req.body, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"] },
     })
     .then((resp) => res.status(201).jsonp(resp.data))
     .catch((err) => res.status(500).jsonp("Error creating new project"));
@@ -206,7 +297,7 @@ router.post(
         projectsURL +
           `${req.params.user}/${req.params.project}/preview/${req.params.img}`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user } }
       )
       .then((resp) => res.status(201).jsonp(resp.data))
       .catch((err) => {
@@ -240,8 +331,11 @@ router.post(
         {
           headers: {
             "Content-Type": "multipart/form-data",
+            "x-share-token": req.headers["x-share-token"],
+            "x-auth-user": req.params.user,
           },
           httpsAgent: httpsAgent,
+          params: req.query,
         }
       )
       .then((resp) => res.sendStatus(201))
@@ -259,11 +353,53 @@ router.post("/:user/:project/tool", auth.checkToken, function (req, res, next) {
     .post(
       projectsURL + `${req.params.user}/${req.params.project}/tool`,
       req.body,
-      { httpsAgent: httpsAgent }
+      { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user } }
     )
     .then((resp) => res.status(201).jsonp(resp.data))
     .catch((err) => res.status(500).jsonp("Error adding tool to project"));
 });
+
+  /**
+   * Create share link (only project owner via auth.checkToken)
+   */
+  router.post("/:user/:project/share", auth.checkToken, function (req, res, next) {
+    axios
+      .post(projectsURL + `${req.params.user}/${req.params.project}/share`, req.body, {
+        httpsAgent: httpsAgent,
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+      })
+      .then((resp) => res.status(201).jsonp(resp.data))
+      .catch((err) => res.status(500).jsonp("Error creating share"));
+  });
+
+  /**
+   * List share links (only project owner)
+   */
+  router.get("/:user/:project/shares", auth.checkToken, function (req, res, next) {
+    axios
+      .get(projectsURL + `${req.params.user}/${req.params.project}/shares`, {
+        httpsAgent: httpsAgent,
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+      })
+      .then((resp) => res.status(200).jsonp(resp.data))
+      .catch((err) => res.status(500).jsonp("Error listing shares"));
+  });
+
+  /**
+   * Delete share link (only project owner)
+   */
+  router.delete("/:user/:project/share/:token", auth.checkToken, function (req, res, next) {
+    axios
+      .delete(projectsURL + `${req.params.user}/${req.params.project}/share/${req.params.token}`, {
+        httpsAgent: httpsAgent,
+        params: req.query,
+        headers: { "x-share-token": req.headers["x-share-token"], "x-auth-user": req.params.user },
+      })
+      .then((resp) => res.sendStatus(resp.status))
+      .catch((err) => res.status(500).jsonp("Error deleting share"));
+  });
 
 /**
  * Reorder tools of a project
@@ -294,7 +430,7 @@ router.post(
       .put(
         projectsURL + `${req.params.user}/${req.params.project}/reorder`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((resp) => res.sendStatus(resp.status === 204 ? 204 : 200))
       .catch((err) => res.status(500).jsonp("Error reordering tools"));
@@ -314,7 +450,7 @@ router.post(
       .post(
         projectsURL + `${req.params.user}/${req.params.project}/process`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((resp) => res.status(201).jsonp(resp.data))
       .catch((err) =>
@@ -332,6 +468,8 @@ router.put("/:user/:project", auth.checkToken, function (req, res, next) {
   axios
     .put(projectsURL + `${req.params.user}/${req.params.project}`, req.body, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"] },
     })
     .then((_) => res.sendStatus(204))
     .catch((err) => res.status(500).jsonp("Error updating project details"));
@@ -351,7 +489,7 @@ router.put(
         projectsURL +
           `${req.params.user}/${req.params.project}/tool/${req.params.tool}`,
         req.body,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((_) => res.sendStatus(204))
       .catch((err) => res.status(500).jsonp("Error updating tool params"));
@@ -367,6 +505,8 @@ router.delete("/:user/:project", auth.checkToken, function (req, res, next) {
   axios
     .delete(projectsURL + `${req.params.user}/${req.params.project}`, {
       httpsAgent: httpsAgent,
+      params: req.query,
+      headers: { "x-share-token": req.headers["x-share-token"] },
     })
     .then((_) => res.sendStatus(204))
     .catch((err) => res.status(500).jsonp("Error deleting project"));
@@ -385,7 +525,7 @@ router.delete(
       .delete(
         projectsURL +
           `${req.params.user}/${req.params.project}/img/${req.params.img}`,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((_) => res.sendStatus(204))
       .catch((err) =>
@@ -407,7 +547,7 @@ router.delete(
       .delete(
         projectsURL +
           `${req.params.user}/${req.params.project}/tool/${req.params.tool}`,
-        { httpsAgent: httpsAgent }
+        { httpsAgent: httpsAgent, params: req.query, headers: { "x-share-token": req.headers["x-share-token"] } }
       )
       .then((_) => res.sendStatus(204))
       .catch((err) =>
@@ -415,5 +555,35 @@ router.delete(
       );
   }
 );
+
+/**
+ * Generate or toggle share link for a project
+ * @body { "enable": Boolean }
+ * @returns { "shareEnabled": Boolean, "shareToken": String | null }
+ */
+router.post("/:user/:project/share", auth.checkToken, function (req, res, next) {
+  axios
+    .post(
+      projectsURL + `${req.params.user}/${req.params.project}/share`,
+      req.body,
+      { httpsAgent: httpsAgent }
+    )
+    .then((resp) => res.status(200).jsonp(resp.data))
+    .catch((err) => res.status(500).jsonp("Error managing project sharing"));
+});
+
+/**
+ * Get project by share token (public endpoint)
+ * @body Empty
+ * @returns Project data
+ */
+router.get("/shared/:token", function (req, res, next) {
+  axios
+    .get(projectsURL + `shared/${req.params.token}`, {
+      httpsAgent: httpsAgent,
+    })
+    .then((resp) => res.status(200).jsonp(resp.data))
+    .catch((err) => res.status(404).jsonp("Project not found or sharing is disabled"));
+});
 
 module.exports = router;

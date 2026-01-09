@@ -11,9 +11,11 @@ import {
   downloadProjectImage,
   downloadProjectResults,
   processProject,
+  cancelProcessing,
   updateProject,
   updateProjectTool,
   previewProjectImage,
+  createShare,
 } from "../projects";
 import { createBlobUrlFromFile, downloadBlob } from "../utils";
 
@@ -30,7 +32,7 @@ export const useAddProject = (uid: string, token: string) => {
   });
 };
 
-export const useDeleteProject = (uid: string, pid: string, token: string) => {
+export const useDeleteProject = (uid: string, pid: string, token: string, shareToken?: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: deleteProject,
@@ -41,21 +43,21 @@ export const useDeleteProject = (uid: string, pid: string, token: string) => {
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["project", uid, pid, token],
+        queryKey: ["project", uid, pid, token, shareToken],
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectImages", pid],
+        queryKey: ["projectImages", uid, pid, token, shareToken],
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectResults", uid, pid, token],
+        queryKey: ["projectResults", uid, pid, token, shareToken],
       });
     },
   });
 };
 
-export const useUpdateProject = (uid: string, pid: string, token: string) => {
+export const useUpdateProject = (uid: string, pid: string, token: string, shareToken?: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: updateProject,
@@ -66,7 +68,7 @@ export const useUpdateProject = (uid: string, pid: string, token: string) => {
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["project", uid, pid, token],
+        queryKey: ["project", uid, pid, token, shareToken],
       });
     },
   });
@@ -76,6 +78,7 @@ export const useAddProjectImages = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const qc = useQueryClient();
   return useMutation({
@@ -83,11 +86,11 @@ export const useAddProjectImages = (
     onSuccess: () => {
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["project", uid, pid, token],
+        queryKey: ["project", uid, pid, token, shareToken],
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectImages", uid, pid, token],
+        queryKey: ["projectImages", uid, pid, token, shareToken],
       });
     },
   });
@@ -97,6 +100,7 @@ export const useDeleteProjectImages = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const qc = useQueryClient();
   return useMutation({
@@ -104,11 +108,11 @@ export const useDeleteProjectImages = (
     onSuccess: () => {
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["project", uid, pid, token],
+        queryKey: ["project", uid, pid, token, shareToken],
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectImages", uid, pid, token],
+        queryKey: ["projectImages", uid, pid, token, shareToken],
       });
     },
   });
@@ -119,10 +123,7 @@ export const useDownloadProjectImage = (edited?: boolean) => {
     mutationFn: downloadProjectImage,
     onSuccess: async (image) => {
       const blobUrl = await createBlobUrlFromFile(image.file);
-      downloadBlob(
-        edited ? image.name.split(".")[0] + "_edited" : image.name,
-        blobUrl,
-      );
+      downloadBlob(image.file.name, blobUrl);
     },
   });
 };
@@ -132,7 +133,7 @@ export const useDownloadProject = () => {
     mutationFn: downloadProjectImages,
     onSuccess: async (project) => {
       const blobUrl = await createBlobUrlFromFile(project.file);
-      downloadBlob(project.name, blobUrl);
+      downloadBlob(project.file.name, blobUrl);
     },
   });
 };
@@ -140,9 +141,9 @@ export const useDownloadProject = () => {
 export const useDownloadProjectResults = () => {
   return useMutation({
     mutationFn: downloadProjectResults,
-    onSuccess: async (project) => {
+    onSuccess: async (project, variables) => {
       const blobUrl = await createBlobUrlFromFile(project.file);
-      downloadBlob(project.name + "_edited", blobUrl);
+      downloadBlob(project.file.name, blobUrl);
     },
   });
 };
@@ -153,6 +154,17 @@ export const useProcessProject = () => {
   });
 };
 
+export const useAddProjectTool = (uid: string, pid: string, token: string, shareToken?: string) => {
+export const useCancelProcessing = (
+  uid: string,
+  pid: string,
+  token: string,
+) => {
+  return useMutation({
+    mutationFn: cancelProcessing,
+  });
+};
+
 export const useAddProjectTool = (uid: string, pid: string, token: string) => {
   const qc = useQueryClient();
   return useMutation({
@@ -160,11 +172,11 @@ export const useAddProjectTool = (uid: string, pid: string, token: string) => {
     onSuccess: () => {
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["project", uid, pid, token],
+        queryKey: ["project", uid, pid, token, shareToken],
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectResults", uid, pid, token],
+        queryKey: ["projectResults", uid, pid, token, shareToken],
       });
     },
   });
@@ -180,6 +192,7 @@ export const useUpdateProjectTool = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const qc = useQueryClient();
   return useMutation({
@@ -187,11 +200,11 @@ export const useUpdateProjectTool = (
     onSuccess: () => {
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["project", uid, pid, token],
+        queryKey: ["project", uid, pid, token, shareToken],
       });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectResults", uid, pid, token],
+        queryKey: ["projectResults", uid, pid, token, shareToken],
       });
     },
   });
@@ -201,15 +214,16 @@ export const useDeleteProjectTool = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: deleteProjectTool,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["project", uid, pid, token] });
+      qc.invalidateQueries({ queryKey: ["project", uid, pid, token, shareToken] });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectResults", uid, pid, token],
+        queryKey: ["projectResults", uid, pid, token, shareToken],
       });
     },
   });
@@ -219,16 +233,29 @@ export const useClearProjectTools = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: clearProjectTools,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["project", uid, pid, token] });
+      qc.invalidateQueries({ queryKey: ["project", uid, pid, token, shareToken] });
       qc.invalidateQueries({
         refetchType: "all",
-        queryKey: ["projectResults", uid, pid, token],
+        queryKey: ["projectResults", uid, pid, token, shareToken],
       });
+    },
+  });
+};
+
+export const useCreateShare = (uid: string, pid: string, token: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ permission, expiresInDays, created_by }: { permission: "view" | "edit"; expiresInDays?: number; created_by?: string }) =>
+      createShare({ uid, pid, token, permission, expiresInDays, created_by }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["project", uid, pid, token] });
+      qc.invalidateQueries({ queryKey: ["projects", uid, token] });
     },
   });
 };

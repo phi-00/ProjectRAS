@@ -33,6 +33,7 @@ import { useState } from "react";
 export function Toolbar() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "grid";
+  const shareToken = searchParams.get("share") ?? undefined;
   const disabled = view === "grid";
   const project = useProjectInfo();
   const session = useSession();
@@ -43,6 +44,7 @@ export function Toolbar() {
     session.user._id,
     project._id,
     session.token,
+    shareToken,
   );
 
   return (

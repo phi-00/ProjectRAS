@@ -5,6 +5,7 @@ import {
   getProjectImages,
   ProjectImage,
   fetchProjectResults,
+  fetchActiveProcesses,
 } from "../projects";
 import { io } from "socket.io-client";
 import { api } from "../axios";
@@ -16,10 +17,12 @@ export const useGetProjects = (uid: string, token: string) => {
   });
 };
 
-export const useGetProject = (uid: string, pid: string, token: string) => {
+export const useGetProject = (uid: string, pid: string, token: string, shareToken?: string) => {
   return useQuery({
-    queryKey: ["project", uid, pid, token],
-    queryFn: () => fetchProject(uid, pid, token),
+    queryKey: ["project", uid, pid, token, shareToken],
+    queryFn: () => fetchProject(uid, pid, token, shareToken),
+    refetchOnWindowFocus: shareToken ? false : true,
+    refetchOnReconnect: shareToken ? false : true,
   });
 };
 
@@ -27,11 +30,12 @@ export const useGetProjectImages = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
   initialData?: ProjectImage[],
 ) => {
   return useQuery({
-    queryKey: ["projectImages", uid, pid, token],
-    queryFn: () => getProjectImages(uid, pid, token),
+    queryKey: ["projectImages", uid, pid, token, shareToken],
+    queryFn: () => getProjectImages(uid, pid, token, shareToken),
     initialData: initialData,
   });
 };
@@ -54,10 +58,25 @@ export const useGetProjectResults = (
   uid: string,
   pid: string,
   token: string,
+  shareToken?: string,
 ) => {
   return useQuery({
-    queryKey: ["projectResults", uid, pid, token],
-    queryFn: () => fetchProjectResults(uid, pid, token),
+    queryKey: ["projectResults", uid, pid, token, shareToken],
+    queryFn: () => fetchProjectResults(uid, pid, token, shareToken),
+    refetchOnWindowFocus: shareToken ? false : true,
+    refetchOnReconnect: shareToken ? false : true,
+  });
+};
+
+export const useGetActiveProcesses = (
+  uid: string,
+  pid: string,
+  token: string,
+) => {
+  return useQuery({
+    queryKey: ["activeProcesses", uid, pid, token],
+    queryFn: () => fetchActiveProcesses(uid, pid, token),
+    refetchInterval: 2000, // Refetch every 2 seconds
   });
 };
 

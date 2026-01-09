@@ -18,12 +18,15 @@ import { createBlobUrlFromFile } from "@/lib/utils";
 import { useProjectInfo } from "@/providers/project-provider";
 import { useSession } from "@/providers/session-provider";
 import { useToast } from "@/hooks/use-toast";
+import { useSearchParams } from "next/navigation";
 
 export function AddImagesDialog() {
   const [open, setOpen] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const shareToken = searchParams.get("share") ?? undefined;
 
   const { _id: pid } = useProjectInfo();
   const session = useSession();
@@ -31,6 +34,7 @@ export function AddImagesDialog() {
     session.user._id,
     pid as string,
     session.token,
+    shareToken,
   );
 
   function onDrop(files: File[]) {

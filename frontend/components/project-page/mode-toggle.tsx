@@ -8,6 +8,7 @@ export function ModeToggle() {
   const searchParams = useSearchParams();
   const view = searchParams.get("view") ?? "grid";
   const mode = searchParams.get("mode") ?? "edit";
+  const share = searchParams.get("share");
   const router = useRouter();
 
   return (
@@ -15,7 +16,10 @@ export function ModeToggle() {
       <Button
         variant={mode === "edit" ? "default" : "secondary"}
         size="icon"
-        onClick={() => router.push(`?mode=edit&view=${view}`)}
+        onClick={() => {
+          const url = share ? `?mode=edit&view=${view}&share=${share}` : `?mode=edit&view=${view}`;
+          router.push(url);
+        }}
         aria-label="Edit mode"
         aria-pressed={view === "grid"}
         className="size-8"
@@ -26,7 +30,10 @@ export function ModeToggle() {
       <Button
         variant={mode === "results" ? "default" : "secondary"}
         size="icon"
-        onClick={() => router.push(`?mode=results&view=${view}`)}
+        onClick={() => {
+          const url = share ? `?mode=results&view=${view}&share=${share}` : `?mode=results&view=${view}`;
+          router.push(url);
+        }}
         aria-label="Results mode"
         aria-pressed={view === "carousel"}
         className="size-8"
